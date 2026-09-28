@@ -162,7 +162,11 @@
   }
 
   // ---------------- screen ----------------
-  var screenCanvas, screenCtx, offCanvas, offCtx, imageData;
+  var screenCanvas, screenCtx, offCanvas, offCtx, imageData, blit32;
+  var viewW = 0, viewH = 0, viewDpr = 1;
+  var perfEnabled = false;
+  try { perfEnabled = typeof location !== 'undefined' && /[?&]perf=1(&|$)/.test(location.search); } catch (e) { }
+  var perfEl = null, perfFrames = 0, perfRenderMs = 0, perfLast = 0;
   var fitPref = null;
   try { fitPref = (typeof localStorage !== 'undefined') ? localStorage.getItem('dr_fit') : null; } catch (e) { }
   var fitMode = (fitPref === null) ? detectTouch() : (fitPref === '1');
@@ -175,44 +179,78 @@
     offCanvas.height = 320;
     offCtx = offCanvas.getContext('2d');
     imageData = offCtx.createImageData(240, 320);
+    blit32 = new Uint32Array(imageData.data.buffer);
+    updateViewport();
+    screenCtx.imageSmoothingEnabled = false;
+  }
+
+  function updateViewport() {
+    if (!screenCanvas) return;
+    var rect = screenCanvas.getBoundingClientRect();
+    viewW = rect.width;
+    viewH = rect.height;
+    viewDpr = (typeof window !== 'undefined' && window.devicePixelRatio) ? window.devicePixelRatio : 1;
+  }
+
+  function initPerf() {
+    if (!perfEnabled || perfEl) return;
+    perfEl = document.createElement('div');
+    perfEl.style.cssText = 'position:fixed;left:6px;top:6px;z-index:60;background:rgba(0,0,0,.75);color:#7CFC00;font:11px/1.3 monospace;padding:4px 6px;border-radius:4px;pointer-events:none;white-space:pre';
+    document.body.appendChild(perfEl);
+    perfLast = Date.now();
+    setInterval(function () {
+      var now = Date.now();
+      var fps = perfFrames * 1000 / Math.max(1, now - perfLast);
+      perfEl.textContent = 'fps ' + fps.toFixed(0) +
+        '\ntick ' + (VM.perf ? VM.perf.tickMs.toFixed(1) : '-') + 'ms' +
+        '\nrender ' + perfRenderMs.toFixed(1) + 'ms';
+      perfFrames = 0;
+      perfRenderMs = 0;
+      perfLast = now;
+    }, 1000);
   }
 
   function render() {
     if (!VM.instances.screen) return;
+    var t0 = perfEnabled ? Date.now() : 0;
     var sw = VM.instances.screenW || 240, sh = VM.instances.screenH || 320;
-    if (offCanvas.width !== sw || offCanvas.height !== sh) {
+    var resized = offCanvas.width !== sw || offCanvas.height !== sh;
+    if (resized) {
       offCanvas.width = sw;
       offCanvas.height = sh;
       imageData = offCtx.createImageData(sw, sh);
+      blit32 = new Uint32Array(imageData.data.buffer);
+    }
+    if (!resized && !VM.instances.screenDirty) {
+      if (perfEnabled) { perfFrames++; perfRenderMs += Date.now() - t0; }
+      return;
     }
     var px = VM.instances.screen.$pixels;
-    var data = imageData.data;
-    for (var i = 0; i < sw * sh; i++) {
+    var n = sw * sh;
+    for (var i = 0; i < n; i++) {
       var p = px[i];
-      var o = i << 2;
-      data[o] = (p >> 16) & 0xFF;
-      data[o + 1] = (p >> 8) & 0xFF;
-      data[o + 2] = p & 0xFF;
-      data[o + 3] = 255;
+      blit32[i] = 0xFF000000 | ((p & 0xFF) << 16) | (p & 0xFF00) | ((p >>> 16) & 0xFF);
     }
     offCtx.putImageData(imageData, 0, 0);
 
-    var rect = screenCanvas.getBoundingClientRect();
-    var vw = rect.width, vh = rect.height;
-    var dpr = (typeof window !== 'undefined' && window.devicePixelRatio) ? window.devicePixelRatio : 1;
+    if (viewW === 0) updateViewport();
+    var vw = viewW, vh = viewH;
+    var dpr = viewDpr;
     var bw = Math.max(1, Math.round(vw * dpr)), bh = Math.max(1, Math.round(vh * dpr));
     if (screenCanvas.width !== bw || screenCanvas.height !== bh) {
       screenCanvas.width = bw;
       screenCanvas.height = bh;
+      screenCtx.imageSmoothingEnabled = false;
     }
     screenCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
     screenCtx.fillStyle = '#000';
     screenCtx.fillRect(0, 0, vw, vh);
-    screenCtx.imageSmoothingEnabled = false;
     var scale = fitMode ? Math.min(vw / sw, vh / sh) : Math.max(1, Math.floor(Math.min(vw / sw, vh / sh)));
     var dw = Math.round(sw * scale), dh = Math.round(sh * scale);
     var dx = Math.round((vw - dw) / 2), dy = Math.round((vh - dh) / 2);
     screenCtx.drawImage(offCanvas, 0, 0, sw, sh, dx, dy, dw, dh);
+    VM.instances.screenDirty = false;
+    if (perfEnabled) { perfFrames++; perfRenderMs += Date.now() - t0; }
   }
 
   // ---------------- input ----------------
@@ -296,11 +334,12 @@
 
   function initTouchControls() {
     var keys = document.querySelectorAll('[data-key]');
+    var usePointer = (typeof window !== 'undefined') && ('PointerEvent' in window);
     for (var i = 0; i < keys.length; i++) {
       (function (el) {
         var code = parseInt(el.getAttribute('data-key'), 10);
         function down(ev) {
-          ev.preventDefault();
+          if (ev.cancelable) ev.preventDefault();
           deferredAudio.unlock();
           if (el.$active) return;
           el.$active = true;
@@ -308,18 +347,28 @@
           VM.inputKey(code, true);
         }
         function up(ev) {
-          ev.preventDefault();
+          if (ev.cancelable) ev.preventDefault();
           if (!el.$active) return;
           el.$active = false;
           el.classList.remove('active');
           VM.inputKey(code, false);
         }
-        el.addEventListener('touchstart', down, { passive: false });
-        el.addEventListener('touchend', up, { passive: false });
-        el.addEventListener('touchcancel', up, { passive: false });
-        el.addEventListener('mousedown', down);
-        el.addEventListener('mouseup', up);
-        el.addEventListener('mouseleave', up);
+        if (usePointer) {
+          el.addEventListener('pointerdown', function (ev) {
+            try { el.setPointerCapture(ev.pointerId); } catch (e) { }
+            down(ev);
+          });
+          el.addEventListener('pointerup', up);
+          el.addEventListener('pointercancel', up);
+          el.addEventListener('lostpointercapture', up);
+        } else {
+          el.addEventListener('touchstart', down, { passive: false });
+          el.addEventListener('touchend', up, { passive: false });
+          el.addEventListener('touchcancel', up, { passive: false });
+          el.addEventListener('mousedown', down);
+          el.addEventListener('mouseup', up);
+          el.addEventListener('mouseleave', up);
+        }
       })(keys[i]);
     }
     // ignore long-press context menus
@@ -346,6 +395,7 @@
   function toggleFit() {
     fitMode = !fitMode;
     try { localStorage.setItem('dr_fit', fitMode ? '1' : '0'); } catch (e) { }
+    if (VM.instances) VM.instances.screenDirty = true;
     render();
   }
 
@@ -385,11 +435,22 @@
     activeOrient = currentOrient();
     applyVariant(activeOrient);
     initScreen();
+    initPerf();
     initKeyboard();
     initTouchControls();
     updateLayout();
-    window.addEventListener('resize', function () { updateLayout(); render(); maybeAutoSwitch(); });
-    window.addEventListener('orientationchange', function () { setTimeout(function () { updateLayout(); render(); maybeAutoSwitch(); }, 300); });
+    window.addEventListener('resize', function () {
+      updateLayout(); updateViewport();
+      if (VM.instances) VM.instances.screenDirty = true;
+      render(); maybeAutoSwitch();
+    });
+    window.addEventListener('orientationchange', function () {
+      setTimeout(function () {
+        updateLayout(); updateViewport();
+        if (VM.instances) VM.instances.screenDirty = true;
+        render(); maybeAutoSwitch();
+      }, 300);
+    });
     document.getElementById('btn-fit').addEventListener('click', toggleFit);
     document.getElementById('btn-full').addEventListener('click', toggleFullscreen);
     document.getElementById('btn-keypad').addEventListener('click', toggleKeypad);
@@ -430,6 +491,17 @@
       if (loading) loading.textContent = '启动失败: ' + e;
       if (typeof console !== 'undefined') console.error(e);
       return;
+    }
+    // Decode the Nokia sample bank off the first touch: PCM conversion needs no
+    // AudioContext, so only buffer creation is left for the unlock callback.
+    if (typeof SoundFont !== 'undefined' && typeof SoundFont.prepare === 'function') {
+      var sfData = (typeof window !== 'undefined' && window.DR_SOUNDFONT) ||
+                   (typeof DR_SOUNDFONT !== 'undefined' ? DR_SOUNDFONT : null);
+      if (sfData) {
+        setTimeout(function () {
+          try { setGlobal('DR_SOUNDFONT_PREPARED', SoundFont.prepare(sfData)); } catch (e) { }
+        }, 0);
+      }
     }
     (function loop() {
       if (!running) return;

@@ -98,6 +98,7 @@ tools/               构建与逆向分析脚本（python3 / 可选 Java 工具�
 `tools/` 内还包含资源格式分析、反编译对照、逐像素截图对比、无头验证等开发脚本；
 其中 Java 相关部分需要自备 JRE / CFR / ECJ / ASM，详见 `THIRD-PARTY.md`。
 开发期的 Java 参考平台（用于与真机行为逐像素对比）不在本仓库中发布。
+在页面 URL 后加 `?perf=1` 可显示 FPS / VM tick / 渲染耗时覆盖层，便于真机性能排查。
 
 ## 发布 Release（可选）
 

@@ -69,13 +69,15 @@ var window = {
   removeEventListener: function(){},
   localStorage: { getItem: function(k){ return (k === 'dr_orient' && typeof $ENV_ORIENT !== 'undefined' && $ENV_ORIENT) ? $ENV_ORIENT : null; }, setItem: function(){} },
   navigator: { maxTouchPoints: 0, userAgent: 'jsc-test' },
-  requestAnimationFrame: function(fn){ return 0; }
+  requestAnimationFrame: function(fn){ return setTimeout(fn, 16); },
+  cancelAnimationFrame: function(id){ clearTimeout(id); }
 };
 if (!__TOUCH) { delete window.ontouchstart; }
 if (typeof $ENV_ORIENT !== 'undefined' && $ENV_ORIENT === 'l') { window.innerWidth = 900; window.innerHeight = 500; }
 var navigator = window.navigator;
 var localStorage = window.localStorage;
-var requestAnimationFrame = function(){ return 0; };
+var requestAnimationFrame = function(fn){ return setTimeout(fn, 16); };
+var cancelAnimationFrame = function(id){ clearTimeout(id); };
 var AudioContext = undefined;
 var webkitAudioContext = undefined;
 var console = { log: function(){}, error: function(){ print('[console.error] ' + Array.prototype.join.call(arguments, ' ')); } };
@@ -89,7 +91,7 @@ Date.now = function(){ return __now; };
 Date.UTC = RealDate.UTC;
 Date.parse = RealDate.parse;
 setTimeout = function(fn, ms){ __timers.push({ at: __now + (ms||0), fn: fn }); return __tid++; };
-clearTimeout = function(){};
+clearTimeout = function(id){ for (var i = 0; i < __timers.length; i++) if (__timers[i].id === id) { __timers.splice(i, 1); return; } };
 function __pump(ms) {
   var target = __now + ms, guard = 0;
   for (;;) {

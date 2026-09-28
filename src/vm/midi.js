@@ -191,16 +191,28 @@ var MIDI = (function () {
     var endTimer = null;
     var scheduleTimer = null;
 
-    // Nokia MobileBAE sample bank (optional; embedded by build_soundfont.py)
+    // Nokia MobileBAE sample bank (optional; embedded by build_soundfont.py).
+    // DR_SOUNDFONT_PREPARED carries PCM decoded off the first touch; attaching
+    // it only creates AudioBuffers.
     var sfData = (typeof window !== 'undefined' && window.DR_SOUNDFONT) ||
                  (typeof DR_SOUNDFONT !== 'undefined' ? DR_SOUNDFONT : null);
+    var prepared = (typeof window !== 'undefined' && window.DR_SOUNDFONT_PREPARED) ||
+                   (typeof DR_SOUNDFONT_PREPARED !== 'undefined' ? DR_SOUNDFONT_PREPARED : null);
     var sf = null;
     if (sfData && typeof SoundFont !== 'undefined') {
-      try { sf = SoundFont.create(ctx, sfData); } catch (e) { sf = null; }
+      try {
+        if (prepared) sf = SoundFont.attach(ctx, prepared);
+        else sf = SoundFont.create(ctx, sfData);
+      } catch (e) { sf = null; }
     }
     var toneEnabled = !!sf;
     var lastPlayer = null;
     var lastVolume = 100;
+    var noiseBuf = null;
+    function getNoiseBuffer() {
+      if (!noiseBuf) noiseBuf = makeNoiseBuffer(ctx, 1.2);
+      return noiseBuf;
+    }
 
     function stopActive() {
       if (endTimer !== null) { clearTimeout(endTimer); endTimer = null; }
@@ -223,10 +235,9 @@ var MIDI = (function () {
       if (!data || data.length < 14) return;
       var song;
       try { song = parse(data); } catch (e) { return; }
-      var t0 = ctx.currentTime + 0.06;
+      var t0 = ctx.currentTime + 0.03;
       var nodes = [];
       var volScale = Math.max(0, Math.min(1, (volume === undefined ? 100 : volume) / 100));
-      var noiseBuf = makeNoiseBuffer(ctx, 1.2);
 
       var chanProg = new Array(16);
       var chanVol = new Array(16);
@@ -312,7 +323,7 @@ var MIDI = (function () {
         }
         if (spec.noise > 0) {
           var ns = ctx.createBufferSource();
-          ns.buffer = noiseBuf;
+          ns.buffer = getNoiseBuffer();
           var nf = ctx.createBiquadFilter();
           nf.type = 'lowpass';
           nf.frequency.value = spec.tf || 2500;
@@ -394,7 +405,7 @@ var MIDI = (function () {
         }
         if (d.noise) {
           var ns = ctx.createBufferSource();
-          ns.buffer = noiseBuf;
+          ns.buffer = getNoiseBuffer();
           var f = ctx.createBiquadFilter();
           if (d.hp) { f.type = 'highpass'; f.frequency.value = d.hp; }
           else if (d.kind === 'snare' || d.kind === 'clap') { f.type = 'bandpass'; f.frequency.value = 1700; f.Q.value = 0.7; }
@@ -439,7 +450,7 @@ var MIDI = (function () {
           else if (e.type === 'bend') updateBend(e.ch, e.value, at);
         }
         if (eventIdx < events.length) {
-          scheduleTimer = setTimeout(scheduleChunk, 300);
+          scheduleTimer = setTimeout(scheduleChunk, 200);
         }
       }
 

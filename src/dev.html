@@ -59,7 +59,7 @@
 
   /* portrait */
   body.touch:not(.landscape) #controls {
-    flex: 0 0 auto; height: 200px;
+    flex: 0 0 auto; height: auto; min-height: clamp(180px, 44vh, 250px);
     padding: 10px 12px calc(10px + var(--safe-bottom)) 12px;
     background: var(--pad-bg);
     align-items: center; justify-content: space-between;
@@ -83,11 +83,11 @@
   }
 
   #dpad {
-    position: relative; width: 156px; height: 156px;
+    position: relative; width: clamp(150px, 54vmin, 200px); height: clamp(150px, 54vmin, 200px);
     display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
-    gap: 4px;
+    gap: 6px;
   }
-  #dpad .key { font-size: 20px; }
+  #dpad .key { min-width: 0; height: 100%; font-size: clamp(18px, 5vmin, 24px); }
   #dpad [data-key="-1"] { grid-column: 2; grid-row: 1; }
   #dpad [data-key="-3"] { grid-column: 1; grid-row: 2; }
   #dpad [data-key="-4"] { grid-column: 3; grid-row: 2; }
@@ -98,7 +98,7 @@
     gap: 10px; padding-bottom: 6px;
   }
   #actions .aux-row { display: flex; gap: 12px; }
-  #actions .softkey { min-width: 58px; height: 46px; font-size: 15px; }
+  #actions .softkey { min-width: clamp(60px, 20vmin, 76px); height: clamp(46px, 14vmin, 56px); font-size: clamp(14px, 3.6vmin, 16px); }
   #actions .key.big { margin-top: 4px; }
   .key {
     min-width: 52px; height: 52px; padding: 0 8px;
@@ -108,7 +108,7 @@
     touch-action: none; cursor: pointer;
   }
   .key.wide { min-width: 72px; }
-  .key.big { width: 84px; height: 84px; border-radius: 50%; font-size: 20px; }
+  .key.big { width: clamp(84px, 26vmin, 100px); height: clamp(84px, 26vmin, 100px); border-radius: 50%; font-size: clamp(18px, 5vmin, 22px); }
   .key.active { background: var(--key-bg-active); transform: scale(0.96); }
   .key small { display: block; font-size: 9px; font-weight: 400; color: #aaa; margin-top: 2px; }
 
@@ -120,7 +120,7 @@
     z-index: 30; display: grid;
   }
   #numpad[hidden] { display: none; }
-  #numpad .key { min-width: 44px; height: 40px; font-size: 14px; }
+  #numpad .key { min-width: clamp(44px, 13vmin, 52px); height: clamp(40px, 12vmin, 46px); font-size: clamp(13px, 3.4vmin, 15px); }
 
   #exit-overlay {
     position: fixed; inset: 0; z-index: 100;

@@ -60,7 +60,7 @@
 
   /* portrait */
   body.touch:not(.landscape) #controls {
-    flex: 0 0 auto; height: 200px;
+    flex: 0 0 auto; height: auto; min-height: clamp(180px, 44vh, 250px);
     padding: 10px 12px calc(10px + var(--safe-bottom)) 12px;
     background: var(--pad-bg);
     align-items: center; justify-content: space-between;
@@ -84,11 +84,11 @@
   }
 
   #dpad {
-    position: relative; width: 156px; height: 156px;
+    position: relative; width: clamp(150px, 54vmin, 200px); height: clamp(150px, 54vmin, 200px);
     display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
-    gap: 4px;
+    gap: 6px;
   }
-  #dpad .key { font-size: 20px; }
+  #dpad .key { min-width: 0; height: 100%; font-size: clamp(18px, 5vmin, 24px); }
   #dpad [data-key="-1"] { grid-column: 2; grid-row: 1; }
   #dpad [data-key="-3"] { grid-column: 1; grid-row: 2; }
   #dpad [data-key="-4"] { grid-column: 3; grid-row: 2; }
@@ -99,7 +99,7 @@
     gap: 10px; padding-bottom: 6px;
   }
   #actions .aux-row { display: flex; gap: 12px; }
-  #actions .softkey { min-width: 58px; height: 46px; font-size: 15px; }
+  #actions .softkey { min-width: clamp(60px, 20vmin, 76px); height: clamp(46px, 14vmin, 56px); font-size: clamp(14px, 3.6vmin, 16px); }
   #actions .key.big { margin-top: 4px; }
   .key {
     min-width: 52px; height: 52px; padding: 0 8px;
@@ -109,7 +109,7 @@
     touch-action: none; cursor: pointer;
   }
   .key.wide { min-width: 72px; }
-  .key.big { width: 84px; height: 84px; border-radius: 50%; font-size: 20px; }
+  .key.big { width: clamp(84px, 26vmin, 100px); height: clamp(84px, 26vmin, 100px); border-radius: 50%; font-size: clamp(18px, 5vmin, 22px); }
   .key.active { background: var(--key-bg-active); transform: scale(0.96); }
   .key small { display: block; font-size: 9px; font-weight: 400; color: #aaa; margin-top: 2px; }
 
@@ -121,7 +121,7 @@
     z-index: 30; display: grid;
   }
   #numpad[hidden] { display: none; }
-  #numpad .key { min-width: 44px; height: 40px; font-size: 14px; }
+  #numpad .key { min-width: clamp(44px, 13vmin, 52px); height: clamp(40px, 12vmin, 46px); font-size: clamp(13px, 3.4vmin, 15px); }
 
   #exit-overlay {
     position: fixed; inset: 0; z-index: 100;
@@ -718,8 +718,10 @@ var SoundFont = (function () {
   // ------------------------------------------------------------------
   // Bank
   // ------------------------------------------------------------------
-  function create(ctx, data) {
-    var waves = [];
+  // Decode base64/PCM and resample without an AudioContext so the heavy part
+  // can run before the first user gesture (iOS unlocks audio in the gesture).
+  function prepare(data) {
+    var pcm = [], rates = [];
     for (var i = 0; i < data.waves.data.length; i++) {
       var b64 = data.waves.data[i];
       var pad = 0;
@@ -727,13 +729,27 @@ var SoundFont = (function () {
       if (b64.charAt(b64.length - 2) === '=') pad++;
       var bytes = (b64.length >> 2) * 3 - pad;
       var raw = decodePCM(b64, bytes);
-      var pcm = toFloat(raw, bytes);
+      var f = toFloat(raw, bytes);
       var rate = data.waves.rate[i];
-      while (rate < 8000) { pcm = upsample2(pcm); rate *= 2; }
-      var buf = ctx.createBuffer(1, pcm.length, rate);
-      var ch = buf.getChannelData(0);
-      if (ch.set) { ch.set(pcm); } else { for (var j = 0; j < pcm.length; j++) ch[j] = pcm[j]; }
-      waves.push(buf);
+      while (rate < 8000) { f = upsample2(f); rate *= 2; }
+      pcm.push(f);
+      rates.push(rate);
+    }
+    return { data: data, pcm: pcm, rates: rates, buffers: null };
+  }
+
+  function attach(ctx, prep) {
+    var data = prep.data;
+    var waves = prep.buffers;
+    if (!waves) {
+      waves = prep.buffers = [];
+      for (var i = 0; i < prep.pcm.length; i++) {
+        var pcm = prep.pcm[i];
+        var buf = ctx.createBuffer(1, pcm.length, prep.rates[i]);
+        var ch = buf.getChannelData(0);
+        if (ch.set) { ch.set(pcm); } else { for (var j = 0; j < pcm.length; j++) ch[j] = pcm[j]; }
+        waves.push(buf);
+      }
     }
 
     function usable(region) {
@@ -865,7 +881,11 @@ var SoundFont = (function () {
     };
   }
 
-  return { create: create };
+  function create(ctx, data) {
+    return attach(ctx, prepare(data));
+  }
+
+  return { prepare: prepare, attach: attach, create: create };
 })();
 
 </script>
@@ -1063,16 +1083,28 @@ var MIDI = (function () {
     var endTimer = null;
     var scheduleTimer = null;
 
-    // Nokia MobileBAE sample bank (optional; embedded by build_soundfont.py)
+    // Nokia MobileBAE sample bank (optional; embedded by build_soundfont.py).
+    // DR_SOUNDFONT_PREPARED carries PCM decoded off the first touch; attaching
+    // it only creates AudioBuffers.
     var sfData = (typeof window !== 'undefined' && window.DR_SOUNDFONT) ||
                  (typeof DR_SOUNDFONT !== 'undefined' ? DR_SOUNDFONT : null);
+    var prepared = (typeof window !== 'undefined' && window.DR_SOUNDFONT_PREPARED) ||
+                   (typeof DR_SOUNDFONT_PREPARED !== 'undefined' ? DR_SOUNDFONT_PREPARED : null);
     var sf = null;
     if (sfData && typeof SoundFont !== 'undefined') {
-      try { sf = SoundFont.create(ctx, sfData); } catch (e) { sf = null; }
+      try {
+        if (prepared) sf = SoundFont.attach(ctx, prepared);
+        else sf = SoundFont.create(ctx, sfData);
+      } catch (e) { sf = null; }
     }
     var toneEnabled = !!sf;
     var lastPlayer = null;
     var lastVolume = 100;
+    var noiseBuf = null;
+    function getNoiseBuffer() {
+      if (!noiseBuf) noiseBuf = makeNoiseBuffer(ctx, 1.2);
+      return noiseBuf;
+    }
 
     function stopActive() {
       if (endTimer !== null) { clearTimeout(endTimer); endTimer = null; }
@@ -1095,10 +1127,9 @@ var MIDI = (function () {
       if (!data || data.length < 14) return;
       var song;
       try { song = parse(data); } catch (e) { return; }
-      var t0 = ctx.currentTime + 0.06;
+      var t0 = ctx.currentTime + 0.03;
       var nodes = [];
       var volScale = Math.max(0, Math.min(1, (volume === undefined ? 100 : volume) / 100));
-      var noiseBuf = makeNoiseBuffer(ctx, 1.2);
 
       var chanProg = new Array(16);
       var chanVol = new Array(16);
@@ -1184,7 +1215,7 @@ var MIDI = (function () {
         }
         if (spec.noise > 0) {
           var ns = ctx.createBufferSource();
-          ns.buffer = noiseBuf;
+          ns.buffer = getNoiseBuffer();
           var nf = ctx.createBiquadFilter();
           nf.type = 'lowpass';
           nf.frequency.value = spec.tf || 2500;
@@ -1266,7 +1297,7 @@ var MIDI = (function () {
         }
         if (d.noise) {
           var ns = ctx.createBufferSource();
-          ns.buffer = noiseBuf;
+          ns.buffer = getNoiseBuffer();
           var f = ctx.createBiquadFilter();
           if (d.hp) { f.type = 'highpass'; f.frequency.value = d.hp; }
           else if (d.kind === 'snare' || d.kind === 'clap') { f.type = 'bandpass'; f.frequency.value = 1700; f.Q.value = 0.7; }
@@ -1311,7 +1342,7 @@ var MIDI = (function () {
           else if (e.type === 'bend') updateBend(e.ch, e.value, at);
         }
         if (eventIdx < events.length) {
-          scheduleTimer = setTimeout(scheduleChunk, 300);
+          scheduleTimer = setTimeout(scheduleChunk, 200);
         }
       }
 
@@ -1690,6 +1721,10 @@ var VM = (function () {
   var threads = [];
   var currentThread = null;
   var schedulerTimer = null;
+  var schedulerIsRaf = false;
+  var schedulerDelay = false;
+  var rafFn = (typeof requestAnimationFrame === 'function') ? requestAnimationFrame : null;
+  var cafFn = (typeof cancelAnimationFrame === 'function') ? cancelAnimationFrame : null;
 
   var vm = {
     classes: classes,
@@ -1703,6 +1738,8 @@ var VM = (function () {
     midlet: null,
     props: {},
     pendingInput: [],
+    pressAt: {},
+    perf: { tickMs: 0 },
     halt: false,
     log: function (s) { if (typeof console !== 'undefined') console.log(s); }
   };
@@ -1817,17 +1854,33 @@ var VM = (function () {
   }
 
   function schedule() {
-    if (schedulerTimer !== null) return;
+    if (schedulerTimer !== null) {
+      if (!schedulerDelay) return;
+      // A wake-up timer is pending; new work (input, media) should run now.
+      if (schedulerIsRaf && cafFn) cafFn(schedulerTimer);
+      else if (!schedulerIsRaf && typeof clearTimeout !== 'undefined') clearTimeout(schedulerTimer);
+      schedulerTimer = null;
+    }
+    schedulerDelay = false;
+    if (rafFn && !(typeof document !== 'undefined' && document.hidden)) {
+      schedulerIsRaf = true;
+      schedulerTimer = rafFn(function () { schedulerTimer = null; tick(); });
+      return;
+    }
     if (typeof setTimeout === 'undefined') return;
+    schedulerIsRaf = false;
     schedulerTimer = setTimeout(tick, 0);
   }
 
   function tick() {
     schedulerTimer = null;
     if (vm.halt) return;
-    var now = Date.now();
+    var tickStart = Date.now();
+    var now = tickStart;
     var nextWake = Infinity;
     var anyRunnable = false;
+    var deadline = now + 8;
+    vm.deadline = deadline;
 
     deliverInput();
 
@@ -1841,7 +1894,7 @@ var VM = (function () {
         anyRunnable = true;
         currentThread = t;
         try {
-          runThread(t, 200000);
+          runThread(t, 60000);
         } catch (e) {
           if (e instanceof SleepSignal) {
             t.state = 'sleeping';
@@ -1863,7 +1916,9 @@ var VM = (function () {
       }
     }
 
+    vm.deadline = 0;
     processMediaEnd();
+    vm.perf.tickMs = vm.perf.tickMs * 0.85 + (Date.now() - tickStart) * 0.15;
 
     for (var d = threads.length - 1; d >= 0; d--) {
       if (threads[d].state === 'dead') threads.splice(d, 1);
@@ -1874,11 +1929,28 @@ var VM = (function () {
 
     if (anyRunnable) schedule();
     else if (nextWake < Infinity) {
+      schedulerIsRaf = false;
+      schedulerDelay = true;
       schedulerTimer = setTimeout(tick, Math.max(0, nextWake - Date.now()));
     }
   }
 
+  // Short taps (common on touch screens) can deliver keyPressed+keyReleased
+  // within one game frame, which the game never observes as "pressed".
+  // Hold the release back until the press has lived for MIN_PRESS_MS.
+  var MIN_PRESS_MS = 70;
+  var deferredReleases = {};
+
   function deliverInput() {
+    var now = Date.now();
+    // deliver held-back releases whose minimum press time has elapsed
+    for (var dc in deferredReleases) {
+      var dv = deferredReleases[dc];
+      if (dv[2] + MIN_PRESS_MS <= now) {
+        delete deferredReleases[dc];
+        vm.pendingInput.unshift(dv);
+      }
+    }
     if (!vm.pendingInput.length || !vm.canvas) return;
     var t = vm.uiThread;
     if (!t || !t.frames.length) {
@@ -1893,16 +1965,28 @@ var VM = (function () {
     var prev = currentThread;
     currentThread = t;
     for (var q = 0; q < inp.length; q++) {
+      var ev = inp[q];
+      if (!ev[1] && ev[2]) {
+        var pressAt = vm.pressAt[ev[0]];
+        if (pressAt && now - pressAt < MIN_PRESS_MS) {
+          deferredReleases[ev[0]] = ev;
+          continue;
+        }
+      }
       try {
-        if (vm.logSound) vm.log('[key] ' + (inp[q][1] ? 'down ' : 'up   ') + inp[q][0]);
-        var m = resolveMethod(vm.canvas.$cls, inp[q][1] ? 'keyPressed' : 'keyReleased', '(I)V');
-        call(t, m, vm.canvas, [inp[q][0] | 0]);
+        if (vm.logSound) vm.log('[key] ' + (ev[1] ? 'down ' : 'up   ') + ev[0]);
+        var m = resolveMethod(vm.canvas.$cls, ev[1] ? 'keyPressed' : 'keyReleased', '(I)V');
+        call(t, m, vm.canvas, [ev[0] | 0]);
       } catch (e) {
-        if (e instanceof SleepSignal || e instanceof WaitSignal) { vm.pendingInput.push(inp[q]); continue; }
+        if (e instanceof SleepSignal || e instanceof WaitSignal) { vm.pendingInput.push(ev); continue; }
         handleTop(e);
       }
     }
     currentThread = prev;
+    if (vm.pendingInput.length) {
+      // deferred releases need a wake-up even if every thread is sleeping
+      if (typeof setTimeout !== 'undefined') setTimeout(function () { schedule(); }, MIN_PRESS_MS);
+    }
   }
 
   var mediaEndQueue = [];
@@ -1996,6 +2080,7 @@ var VM = (function () {
       try {
         for (;;) {
           if (budget-- <= 0) { saveFrame(); return; }
+          if ((budget & 511) === 0 && vm.deadline && Date.now() > vm.deadline) { saveFrame(); return; }
           fr.opPc = pc;
           if (pc < 0 || pc >= code.length) {
             vm.log('[vm] PC OUT OF RANGE ' + fr.cls.name + '.' + fr.m.name + fr.m.desc + ' pc=' + pc + ' len=' + code.length);
@@ -2488,7 +2573,16 @@ var VM = (function () {
   }
 
   function inputKey(code, down) {
-    vm.pendingInput.push([code, down]);
+    code = code | 0;
+    if (down) {
+      delete deferredReleases[code];
+      for (var i = vm.pendingInput.length - 1; i >= 0; i--) {
+        var e2 = vm.pendingInput[i];
+        if (e2[0] === code && !e2[1]) vm.pendingInput.splice(i, 1);
+      }
+      vm.pressAt[code] = Date.now();
+    }
+    vm.pendingInput.push([code, down, Date.now()]);
     schedule();
   }
 
@@ -2529,7 +2623,11 @@ var VM = (function () {
     queueMediaEnd: queueMediaEnd,
     shutdown: function (reason) {
       vm.halt = true;
-      if (schedulerTimer !== null && typeof clearTimeout !== 'undefined') { clearTimeout(schedulerTimer); schedulerTimer = null; }
+      if (schedulerTimer !== null) {
+        if (schedulerIsRaf && cafFn) cafFn(schedulerTimer);
+        else if (typeof clearTimeout !== 'undefined') clearTimeout(schedulerTimer);
+        schedulerTimer = null;
+      }
       for (var i = 0; i < threads.length; i++) threads[i].state = 'dead';
       threads.length = 0;
       if (vm.onDestroyed) { try { vm.onDestroyed(reason || 'exit'); } catch (e) { } }
@@ -4060,7 +4158,11 @@ var VM = (function () {
   }
 
   // ---------------- screen ----------------
-  var screenCanvas, screenCtx, offCanvas, offCtx, imageData;
+  var screenCanvas, screenCtx, offCanvas, offCtx, imageData, blit32;
+  var viewW = 0, viewH = 0, viewDpr = 1;
+  var perfEnabled = false;
+  try { perfEnabled = typeof location !== 'undefined' && /[?&]perf=1(&|$)/.test(location.search); } catch (e) { }
+  var perfEl = null, perfFrames = 0, perfRenderMs = 0, perfLast = 0;
   var fitPref = null;
   try { fitPref = (typeof localStorage !== 'undefined') ? localStorage.getItem('dr_fit') : null; } catch (e) { }
   var fitMode = (fitPref === null) ? detectTouch() : (fitPref === '1');
@@ -4073,44 +4175,78 @@ var VM = (function () {
     offCanvas.height = 320;
     offCtx = offCanvas.getContext('2d');
     imageData = offCtx.createImageData(240, 320);
+    blit32 = new Uint32Array(imageData.data.buffer);
+    updateViewport();
+    screenCtx.imageSmoothingEnabled = false;
+  }
+
+  function updateViewport() {
+    if (!screenCanvas) return;
+    var rect = screenCanvas.getBoundingClientRect();
+    viewW = rect.width;
+    viewH = rect.height;
+    viewDpr = (typeof window !== 'undefined' && window.devicePixelRatio) ? window.devicePixelRatio : 1;
+  }
+
+  function initPerf() {
+    if (!perfEnabled || perfEl) return;
+    perfEl = document.createElement('div');
+    perfEl.style.cssText = 'position:fixed;left:6px;top:6px;z-index:60;background:rgba(0,0,0,.75);color:#7CFC00;font:11px/1.3 monospace;padding:4px 6px;border-radius:4px;pointer-events:none;white-space:pre';
+    document.body.appendChild(perfEl);
+    perfLast = Date.now();
+    setInterval(function () {
+      var now = Date.now();
+      var fps = perfFrames * 1000 / Math.max(1, now - perfLast);
+      perfEl.textContent = 'fps ' + fps.toFixed(0) +
+        '\ntick ' + (VM.perf ? VM.perf.tickMs.toFixed(1) : '-') + 'ms' +
+        '\nrender ' + perfRenderMs.toFixed(1) + 'ms';
+      perfFrames = 0;
+      perfRenderMs = 0;
+      perfLast = now;
+    }, 1000);
   }
 
   function render() {
     if (!VM.instances.screen) return;
+    var t0 = perfEnabled ? Date.now() : 0;
     var sw = VM.instances.screenW || 240, sh = VM.instances.screenH || 320;
-    if (offCanvas.width !== sw || offCanvas.height !== sh) {
+    var resized = offCanvas.width !== sw || offCanvas.height !== sh;
+    if (resized) {
       offCanvas.width = sw;
       offCanvas.height = sh;
       imageData = offCtx.createImageData(sw, sh);
+      blit32 = new Uint32Array(imageData.data.buffer);
+    }
+    if (!resized && !VM.instances.screenDirty) {
+      if (perfEnabled) { perfFrames++; perfRenderMs += Date.now() - t0; }
+      return;
     }
     var px = VM.instances.screen.$pixels;
-    var data = imageData.data;
-    for (var i = 0; i < sw * sh; i++) {
+    var n = sw * sh;
+    for (var i = 0; i < n; i++) {
       var p = px[i];
-      var o = i << 2;
-      data[o] = (p >> 16) & 0xFF;
-      data[o + 1] = (p >> 8) & 0xFF;
-      data[o + 2] = p & 0xFF;
-      data[o + 3] = 255;
+      blit32[i] = 0xFF000000 | ((p & 0xFF) << 16) | (p & 0xFF00) | ((p >>> 16) & 0xFF);
     }
     offCtx.putImageData(imageData, 0, 0);
 
-    var rect = screenCanvas.getBoundingClientRect();
-    var vw = rect.width, vh = rect.height;
-    var dpr = (typeof window !== 'undefined' && window.devicePixelRatio) ? window.devicePixelRatio : 1;
+    if (viewW === 0) updateViewport();
+    var vw = viewW, vh = viewH;
+    var dpr = viewDpr;
     var bw = Math.max(1, Math.round(vw * dpr)), bh = Math.max(1, Math.round(vh * dpr));
     if (screenCanvas.width !== bw || screenCanvas.height !== bh) {
       screenCanvas.width = bw;
       screenCanvas.height = bh;
+      screenCtx.imageSmoothingEnabled = false;
     }
     screenCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
     screenCtx.fillStyle = '#000';
     screenCtx.fillRect(0, 0, vw, vh);
-    screenCtx.imageSmoothingEnabled = false;
     var scale = fitMode ? Math.min(vw / sw, vh / sh) : Math.max(1, Math.floor(Math.min(vw / sw, vh / sh)));
     var dw = Math.round(sw * scale), dh = Math.round(sh * scale);
     var dx = Math.round((vw - dw) / 2), dy = Math.round((vh - dh) / 2);
     screenCtx.drawImage(offCanvas, 0, 0, sw, sh, dx, dy, dw, dh);
+    VM.instances.screenDirty = false;
+    if (perfEnabled) { perfFrames++; perfRenderMs += Date.now() - t0; }
   }
 
   // ---------------- input ----------------
@@ -4194,11 +4330,12 @@ var VM = (function () {
 
   function initTouchControls() {
     var keys = document.querySelectorAll('[data-key]');
+    var usePointer = (typeof window !== 'undefined') && ('PointerEvent' in window);
     for (var i = 0; i < keys.length; i++) {
       (function (el) {
         var code = parseInt(el.getAttribute('data-key'), 10);
         function down(ev) {
-          ev.preventDefault();
+          if (ev.cancelable) ev.preventDefault();
           deferredAudio.unlock();
           if (el.$active) return;
           el.$active = true;
@@ -4206,18 +4343,28 @@ var VM = (function () {
           VM.inputKey(code, true);
         }
         function up(ev) {
-          ev.preventDefault();
+          if (ev.cancelable) ev.preventDefault();
           if (!el.$active) return;
           el.$active = false;
           el.classList.remove('active');
           VM.inputKey(code, false);
         }
-        el.addEventListener('touchstart', down, { passive: false });
-        el.addEventListener('touchend', up, { passive: false });
-        el.addEventListener('touchcancel', up, { passive: false });
-        el.addEventListener('mousedown', down);
-        el.addEventListener('mouseup', up);
-        el.addEventListener('mouseleave', up);
+        if (usePointer) {
+          el.addEventListener('pointerdown', function (ev) {
+            try { el.setPointerCapture(ev.pointerId); } catch (e) { }
+            down(ev);
+          });
+          el.addEventListener('pointerup', up);
+          el.addEventListener('pointercancel', up);
+          el.addEventListener('lostpointercapture', up);
+        } else {
+          el.addEventListener('touchstart', down, { passive: false });
+          el.addEventListener('touchend', up, { passive: false });
+          el.addEventListener('touchcancel', up, { passive: false });
+          el.addEventListener('mousedown', down);
+          el.addEventListener('mouseup', up);
+          el.addEventListener('mouseleave', up);
+        }
       })(keys[i]);
     }
     // ignore long-press context menus
@@ -4244,6 +4391,7 @@ var VM = (function () {
   function toggleFit() {
     fitMode = !fitMode;
     try { localStorage.setItem('dr_fit', fitMode ? '1' : '0'); } catch (e) { }
+    if (VM.instances) VM.instances.screenDirty = true;
     render();
   }
 
@@ -4283,11 +4431,22 @@ var VM = (function () {
     activeOrient = currentOrient();
     applyVariant(activeOrient);
     initScreen();
+    initPerf();
     initKeyboard();
     initTouchControls();
     updateLayout();
-    window.addEventListener('resize', function () { updateLayout(); render(); maybeAutoSwitch(); });
-    window.addEventListener('orientationchange', function () { setTimeout(function () { updateLayout(); render(); maybeAutoSwitch(); }, 300); });
+    window.addEventListener('resize', function () {
+      updateLayout(); updateViewport();
+      if (VM.instances) VM.instances.screenDirty = true;
+      render(); maybeAutoSwitch();
+    });
+    window.addEventListener('orientationchange', function () {
+      setTimeout(function () {
+        updateLayout(); updateViewport();
+        if (VM.instances) VM.instances.screenDirty = true;
+        render(); maybeAutoSwitch();
+      }, 300);
+    });
     document.getElementById('btn-fit').addEventListener('click', toggleFit);
     document.getElementById('btn-full').addEventListener('click', toggleFullscreen);
     document.getElementById('btn-keypad').addEventListener('click', toggleKeypad);
@@ -4328,6 +4487,17 @@ var VM = (function () {
       if (loading) loading.textContent = '启动失败: ' + e;
       if (typeof console !== 'undefined') console.error(e);
       return;
+    }
+    // Decode the Nokia sample bank off the first touch: PCM conversion needs no
+    // AudioContext, so only buffer creation is left for the unlock callback.
+    if (typeof SoundFont !== 'undefined' && typeof SoundFont.prepare === 'function') {
+      var sfData = (typeof window !== 'undefined' && window.DR_SOUNDFONT) ||
+                   (typeof DR_SOUNDFONT !== 'undefined' ? DR_SOUNDFONT : null);
+      if (sfData) {
+        setTimeout(function () {
+          try { setGlobal('DR_SOUNDFONT_PREPARED', SoundFont.prepare(sfData)); } catch (e) { }
+        }, 0);
+      }
     }
     (function loop() {
       if (!running) return;

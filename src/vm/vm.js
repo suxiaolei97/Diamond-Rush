@@ -327,6 +327,10 @@ var VM = (function () {
   var threads = [];
   var currentThread = null;
   var schedulerTimer = null;
+  var schedulerIsRaf = false;
+  var schedulerDelay = false;
+  var rafFn = (typeof requestAnimationFrame === 'function') ? requestAnimationFrame : null;
+  var cafFn = (typeof cancelAnimationFrame === 'function') ? cancelAnimationFrame : null;
 
   var vm = {
     classes: classes,
@@ -340,6 +344,8 @@ var VM = (function () {
     midlet: null,
     props: {},
     pendingInput: [],
+    pressAt: {},
+    perf: { tickMs: 0 },
     halt: false,
     log: function (s) { if (typeof console !== 'undefined') console.log(s); }
   };
@@ -454,17 +460,33 @@ var VM = (function () {
   }
 
   function schedule() {
-    if (schedulerTimer !== null) return;
+    if (schedulerTimer !== null) {
+      if (!schedulerDelay) return;
+      // A wake-up timer is pending; new work (input, media) should run now.
+      if (schedulerIsRaf && cafFn) cafFn(schedulerTimer);
+      else if (!schedulerIsRaf && typeof clearTimeout !== 'undefined') clearTimeout(schedulerTimer);
+      schedulerTimer = null;
+    }
+    schedulerDelay = false;
+    if (rafFn && !(typeof document !== 'undefined' && document.hidden)) {
+      schedulerIsRaf = true;
+      schedulerTimer = rafFn(function () { schedulerTimer = null; tick(); });
+      return;
+    }
     if (typeof setTimeout === 'undefined') return;
+    schedulerIsRaf = false;
     schedulerTimer = setTimeout(tick, 0);
   }
 
   function tick() {
     schedulerTimer = null;
     if (vm.halt) return;
-    var now = Date.now();
+    var tickStart = Date.now();
+    var now = tickStart;
     var nextWake = Infinity;
     var anyRunnable = false;
+    var deadline = now + 8;
+    vm.deadline = deadline;
 
     deliverInput();
 
@@ -478,7 +500,7 @@ var VM = (function () {
         anyRunnable = true;
         currentThread = t;
         try {
-          runThread(t, 200000);
+          runThread(t, 60000);
         } catch (e) {
           if (e instanceof SleepSignal) {
             t.state = 'sleeping';
@@ -500,7 +522,9 @@ var VM = (function () {
       }
     }
 
+    vm.deadline = 0;
     processMediaEnd();
+    vm.perf.tickMs = vm.perf.tickMs * 0.85 + (Date.now() - tickStart) * 0.15;
 
     for (var d = threads.length - 1; d >= 0; d--) {
       if (threads[d].state === 'dead') threads.splice(d, 1);
@@ -511,11 +535,28 @@ var VM = (function () {
 
     if (anyRunnable) schedule();
     else if (nextWake < Infinity) {
+      schedulerIsRaf = false;
+      schedulerDelay = true;
       schedulerTimer = setTimeout(tick, Math.max(0, nextWake - Date.now()));
     }
   }
 
+  // Short taps (common on touch screens) can deliver keyPressed+keyReleased
+  // within one game frame, which the game never observes as "pressed".
+  // Hold the release back until the press has lived for MIN_PRESS_MS.
+  var MIN_PRESS_MS = 70;
+  var deferredReleases = {};
+
   function deliverInput() {
+    var now = Date.now();
+    // deliver held-back releases whose minimum press time has elapsed
+    for (var dc in deferredReleases) {
+      var dv = deferredReleases[dc];
+      if (dv[2] + MIN_PRESS_MS <= now) {
+        delete deferredReleases[dc];
+        vm.pendingInput.unshift(dv);
+      }
+    }
     if (!vm.pendingInput.length || !vm.canvas) return;
     var t = vm.uiThread;
     if (!t || !t.frames.length) {
@@ -530,16 +571,28 @@ var VM = (function () {
     var prev = currentThread;
     currentThread = t;
     for (var q = 0; q < inp.length; q++) {
+      var ev = inp[q];
+      if (!ev[1] && ev[2]) {
+        var pressAt = vm.pressAt[ev[0]];
+        if (pressAt && now - pressAt < MIN_PRESS_MS) {
+          deferredReleases[ev[0]] = ev;
+          continue;
+        }
+      }
       try {
-        if (vm.logSound) vm.log('[key] ' + (inp[q][1] ? 'down ' : 'up   ') + inp[q][0]);
-        var m = resolveMethod(vm.canvas.$cls, inp[q][1] ? 'keyPressed' : 'keyReleased', '(I)V');
-        call(t, m, vm.canvas, [inp[q][0] | 0]);
+        if (vm.logSound) vm.log('[key] ' + (ev[1] ? 'down ' : 'up   ') + ev[0]);
+        var m = resolveMethod(vm.canvas.$cls, ev[1] ? 'keyPressed' : 'keyReleased', '(I)V');
+        call(t, m, vm.canvas, [ev[0] | 0]);
       } catch (e) {
-        if (e instanceof SleepSignal || e instanceof WaitSignal) { vm.pendingInput.push(inp[q]); continue; }
+        if (e instanceof SleepSignal || e instanceof WaitSignal) { vm.pendingInput.push(ev); continue; }
         handleTop(e);
       }
     }
     currentThread = prev;
+    if (vm.pendingInput.length) {
+      // deferred releases need a wake-up even if every thread is sleeping
+      if (typeof setTimeout !== 'undefined') setTimeout(function () { schedule(); }, MIN_PRESS_MS);
+    }
   }
 
   var mediaEndQueue = [];
@@ -633,6 +686,7 @@ var VM = (function () {
       try {
         for (;;) {
           if (budget-- <= 0) { saveFrame(); return; }
+          if ((budget & 511) === 0 && vm.deadline && Date.now() > vm.deadline) { saveFrame(); return; }
           fr.opPc = pc;
           if (pc < 0 || pc >= code.length) {
             vm.log('[vm] PC OUT OF RANGE ' + fr.cls.name + '.' + fr.m.name + fr.m.desc + ' pc=' + pc + ' len=' + code.length);
@@ -1125,7 +1179,16 @@ var VM = (function () {
   }
 
   function inputKey(code, down) {
-    vm.pendingInput.push([code, down]);
+    code = code | 0;
+    if (down) {
+      delete deferredReleases[code];
+      for (var i = vm.pendingInput.length - 1; i >= 0; i--) {
+        var e2 = vm.pendingInput[i];
+        if (e2[0] === code && !e2[1]) vm.pendingInput.splice(i, 1);
+      }
+      vm.pressAt[code] = Date.now();
+    }
+    vm.pendingInput.push([code, down, Date.now()]);
     schedule();
   }
 
@@ -1166,7 +1229,11 @@ var VM = (function () {
     queueMediaEnd: queueMediaEnd,
     shutdown: function (reason) {
       vm.halt = true;
-      if (schedulerTimer !== null && typeof clearTimeout !== 'undefined') { clearTimeout(schedulerTimer); schedulerTimer = null; }
+      if (schedulerTimer !== null) {
+        if (schedulerIsRaf && cafFn) cafFn(schedulerTimer);
+        else if (typeof clearTimeout !== 'undefined') clearTimeout(schedulerTimer);
+        schedulerTimer = null;
+      }
       for (var i = 0; i < threads.length; i++) threads[i].state = 'dead';
       threads.length = 0;
       if (vm.onDestroyed) { try { vm.onDestroyed(reason || 'exit'); } catch (e) { } }

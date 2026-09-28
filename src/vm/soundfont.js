@@ -96,8 +96,10 @@ var SoundFont = (function () {
   // ------------------------------------------------------------------
   // Bank
   // ------------------------------------------------------------------
-  function create(ctx, data) {
-    var waves = [];
+  // Decode base64/PCM and resample without an AudioContext so the heavy part
+  // can run before the first user gesture (iOS unlocks audio in the gesture).
+  function prepare(data) {
+    var pcm = [], rates = [];
     for (var i = 0; i < data.waves.data.length; i++) {
       var b64 = data.waves.data[i];
       var pad = 0;
@@ -105,13 +107,27 @@ var SoundFont = (function () {
       if (b64.charAt(b64.length - 2) === '=') pad++;
       var bytes = (b64.length >> 2) * 3 - pad;
       var raw = decodePCM(b64, bytes);
-      var pcm = toFloat(raw, bytes);
+      var f = toFloat(raw, bytes);
       var rate = data.waves.rate[i];
-      while (rate < 8000) { pcm = upsample2(pcm); rate *= 2; }
-      var buf = ctx.createBuffer(1, pcm.length, rate);
-      var ch = buf.getChannelData(0);
-      if (ch.set) { ch.set(pcm); } else { for (var j = 0; j < pcm.length; j++) ch[j] = pcm[j]; }
-      waves.push(buf);
+      while (rate < 8000) { f = upsample2(f); rate *= 2; }
+      pcm.push(f);
+      rates.push(rate);
+    }
+    return { data: data, pcm: pcm, rates: rates, buffers: null };
+  }
+
+  function attach(ctx, prep) {
+    var data = prep.data;
+    var waves = prep.buffers;
+    if (!waves) {
+      waves = prep.buffers = [];
+      for (var i = 0; i < prep.pcm.length; i++) {
+        var pcm = prep.pcm[i];
+        var buf = ctx.createBuffer(1, pcm.length, prep.rates[i]);
+        var ch = buf.getChannelData(0);
+        if (ch.set) { ch.set(pcm); } else { for (var j = 0; j < pcm.length; j++) ch[j] = pcm[j]; }
+        waves.push(buf);
+      }
     }
 
     function usable(region) {
@@ -243,5 +259,9 @@ var SoundFont = (function () {
     };
   }
 
-  return { create: create };
+  function create(ctx, data) {
+    return attach(ctx, prepare(data));
+  }
+
+  return { prepare: prepare, attach: attach, create: create };
 })();
