@@ -27,6 +27,8 @@ def main():
         src = m.group(1)
         path = os.path.join(ROOT, 'src', src)
         if not os.path.isfile(path):
+            if src == 'assets/soundfont.js':
+                return '<script>\nvar DR_SOUNDFONT=null;\n</script>'
             missing.append(path)
             return ''
         code = open(path, encoding='utf-8').read()

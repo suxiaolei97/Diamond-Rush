@@ -191,6 +191,14 @@ var MIDI = (function () {
     var endTimer = null;
     var scheduleTimer = null;
 
+    // Nokia MobileBAE sample bank (optional; embedded by build_soundfont.py)
+    var sfData = (typeof window !== 'undefined' && window.DR_SOUNDFONT) ||
+                 (typeof DR_SOUNDFONT !== 'undefined' ? DR_SOUNDFONT : null);
+    var sf = null;
+    if (sfData && typeof SoundFont !== 'undefined') {
+      try { sf = SoundFont.create(ctx, sfData); } catch (e) { sf = null; }
+    }
+
     function stopActive() {
       if (endTimer !== null) { clearTimeout(endTimer); endTimer = null; }
       if (scheduleTimer !== null) { clearTimeout(scheduleTimer); scheduleTimer = null; }
@@ -229,7 +237,38 @@ var MIDI = (function () {
       }
 
       function startVoice(ch, note, vel, at) {
-        if (ch === 9) { startDrum(note, vel, at); return; }
+        if (ch === 9) {
+          if (sf) {
+            var dv = sf.startVoice(master, {
+              isDrum: true, ch: ch, note: note, vel: vel, at: at,
+              chanVol: Math.pow(chanVol[ch] / 127, 1.2),
+              pan: (chanPan[ch] - 64) / 64, bend: bendRatio[ch], volScale: volScale
+            });
+            if (dv) {
+              var dk = ch + ':' + note;
+              if (sounding[dk]) releaseVoice(dk, at);
+              sounding[dk] = dv;
+              nodes.push(dv.src, dv.gain);
+              return;
+            }
+          }
+          startDrum(note, vel, at);
+          return;
+        }
+        if (sf) {
+          var sv = sf.startVoice(master, {
+            isDrum: false, ch: ch, note: note, vel: vel, at: at,
+            prog: chanProg[ch], chanVol: Math.pow(chanVol[ch] / 127, 1.3),
+            pan: (chanPan[ch] - 64) / 64, bend: bendRatio[ch], volScale: volScale
+          });
+          if (sv) {
+            var sk = ch + ':' + note;
+            if (sounding[sk]) releaseVoice(sk, at);
+            sounding[sk] = sv;
+            nodes.push(sv.src, sv.gain);
+            return;
+          }
+        }
         var spec = voiceSpec(chanProg[ch]);
         var baseF = 440 * Math.pow(2, (note - 69) / 12);
         var ratio = bendRatio[ch];
@@ -298,6 +337,7 @@ var MIDI = (function () {
         var v = sounding[key];
         if (!v) return;
         delete sounding[key];
+        if (v.kind === 'sf') { sf.release(v, at); return; }
         var end = at + v.release;
         try {
           v.gain.gain.cancelScheduledValues(at);
@@ -315,6 +355,7 @@ var MIDI = (function () {
         for (var key in sounding) {
           var v = sounding[key];
           if (v.ch !== ch) continue;
+          if (v.kind === 'sf') { sf.bend(v, nr, at); continue; }
           for (var i = 0; i < v.oscs.length; i++) {
             var o = v.oscs[i];
             var cur = o.baseF * o.mult * v.ratio;

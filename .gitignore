@@ -2,6 +2,8 @@
 *.jar
 /reversed/
 /harness/
+# 诺基亚 DLS 音色库为第三方版权素材，仅供本机构建使用
+/Nokia Sound Font/
 
 # ---- 构建产物（HTML 成品除外）----
 /index.html
@@ -10,6 +12,7 @@
 # ---- 本地生成资源（由 tools/build_assets.py 生成）----
 /src/assets/classes.js
 /src/assets/resources.js
+/src/assets/soundfont.js
 
 # ---- 开发工具二进制（按需下载，见 THIRD-PARTY.md）----
 /tools/jre/

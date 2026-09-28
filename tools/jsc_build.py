@@ -11,6 +11,7 @@ FILES = [
     'src/vm/fontdata.js',
     'src/vm/classfile.js',
     'src/vm/zlib.js',
+    'src/vm/soundfont.js',
     'src/vm/midi.js',
     'src/vm/vm.js',
     'src/vm/natives_core.js',
@@ -18,9 +19,17 @@ FILES = [
     'tools/jsc_runner.js',
 ]
 
+OPTIONAL_FILES = [
+    'src/assets/soundfont.js',
+]
+
 def main():
+    order = list(FILES)
+    for f in OPTIONAL_FILES:
+        if os.path.isfile(os.path.join(ROOT, f)):
+            order.insert(2, f)   # before the VM sources (they execute on load)
     with open(OUT, 'w') as out:
-        for f in FILES:
+        for f in order:
             with open(os.path.join(ROOT, f)) as inp:
                 out.write('// ===== ' + f + ' =====\n')
                 out.write(inp.read())

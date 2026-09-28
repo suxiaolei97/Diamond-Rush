@@ -41,10 +41,18 @@
    ./build.sh                      # 或：DR_JAR=/path/to/game.jar ./build.sh
    ```
 
-3. 得到 `钻石狂潮.html`（自包含单文件，约 1MB）。
+3. 得到 `钻石狂潮.html`（自包含单文件，约 1MB；加入音色库后约 1.4MB）。
 
 构建流程：`tools/build_assets.py` 把 JAR 中的 `.class` 与资源编码为 base64
 （`src/assets/*.js`），`tools/build_html.py` 再把引擎与这些数据内联为单个 HTML。
+
+### 可选：原机诺基亚音色库
+
+把诺基亚 MobileBAE 的 DLS 音色库放到 `Nokia Sound Font/Charlie Bank.dls`
+（或自定义 `DR_BANK=/path/to/bank.dls`），`build.sh` 会自动调用
+`tools/build_soundfont.py` 把采样与音色映射内联进 HTML。游戏内音乐与音效
+将改用原机采样回放（128 个 GM 音色 + 鼓组），未提供音色库时自动回退到
+内置 WebAudio 合成器。音色库为诺基亚版权素材，**不在本仓库中分发**。
 
 ## 特性
 
@@ -52,7 +60,8 @@
 - **MIDP 2.0 API**：Graphics、Image、Font、Canvas、Display、RecordStore、Media（MIDI）。
 - **原版资源**：自研容器与图集、PNG（DEFLATE）、文本表、关卡数据全部按原格式解码。
 - **渲染**：与原机一致的 240×320 软件光栅化，整数倍或铺满缩放、HiDPI 适配。
-- **音频**：原版 MIDI（音乐 + 音效）由 WebAudio 合成，含鼓组、弯音、通道音量/声像。
+- **音频**：原版 MIDI（音乐 + 音效）由 WebAudio 播放；可选内联诺基亚
+  MobileBAE 原机音色库采样回放，否则使用内置合成器（含鼓组、弯音、通道音量/声像）。
 - **存档**：原版 RMS 记录持久化到 localStorage。
 - **多语言**：使用 JAR 自带的语言表（简体中文 / 繁体中文 / English，右上角切换）。
 
@@ -62,7 +71,7 @@
 钻石狂潮.html        单文件成品（含游戏资源，由构建生成）
 build.sh             一键构建（校验 JAR → 提取资源 → 生成 HTML）
 src/
-  vm/                引擎：classfile 解析、JVM 解释器、MIDP、zlib、MIDI、字体
+  vm/                引擎：classfile 解析、JVM 解释器、MIDP、zlib、MIDI、音色采样、字体
   app/               浏览器外壳：缩放、键盘/触控映射、音频解锁、退出处理
   dev.html           开发页（引用分离脚本）
 tools/               构建与逆向分析脚本（python3 / 可选 Java 工具）
@@ -72,7 +81,8 @@ tools/               构建与逆向分析脚本（python3 / 可选 Java 工具�
 
 - 原机系统字体位于手机固件中无法从 JAR 提取，改用公共领域 5×7 像素字体；
   中文由浏览器系统字体实时光栅化绘制。
-- MIDI 音色为 WebAudio 合成：旋律、节奏、鼓点、音效触发与原版一致，音色为近似。原版MIDI音色仅有Nokia设备的MIDI合成器可以实现。
+- 音频触发、时值、弯音与通道参数与原版一致；本仓库成品内嵌诺基亚 MobileBAE
+  原机音色采样（右上角 SF/SYN 可切回内置合成器），无音色库时自动回退合成器。
 - 退出流程在浏览器中以“游戏已退出”面板呈现。
 
 ## 开发 / 逆向工具（可选）

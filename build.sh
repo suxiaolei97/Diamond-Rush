@@ -22,10 +22,19 @@ fi
 
 command -v python3 >/dev/null || { echo "需要 Python 3" >&2; exit 1; }
 
-echo "[1/2] 提取类与资源 ..."
+echo "[1/3] 提取类与资源 ..."
 python3 tools/build_assets.py --jar "$JAR"
 
-echo "[2/2] 生成单文件 HTML ..."
+BANK="${DR_BANK:-Nokia Sound Font/Charlie Bank.dls}"
+if [ -f "$BANK" ]; then
+  echo "[2/3] 生成诺基亚音色库资源 ..."
+  python3 tools/build_soundfont.py --bank "$BANK"
+else
+  echo "[2/3] 未找到诺基亚 DLS 音色库（$BANK），使用内置合成器音色。"
+  rm -f src/assets/soundfont.js
+fi
+
+echo "[3/3] 生成单文件 HTML ..."
 python3 tools/build_html.py --out "$OUT"
 
 echo

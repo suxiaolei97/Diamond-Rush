@@ -224,7 +224,7 @@
         FakeParam.prototype.exponentialRampToValueAtTime = function () { return this; };
         FakeParam.prototype.cancelScheduledValues = function () { return this; };
         var nodeCount = { osc: 0, noise: 0, gain: 0, filter: 0, panner: 0 };
-        function FakeNode(kind) { this.frequency = new FakeParam(); this.gain = new FakeParam(); this.Q = new FakeParam(); this.pan = new FakeParam(); this.type = ''; this.buffer = null; if (kind) nodeCount[kind]++; }
+        function FakeNode(kind) { this.frequency = new FakeParam(); this.gain = new FakeParam(); this.Q = new FakeParam(); this.pan = new FakeParam(); this.playbackRate = new FakeParam(); this.type = ''; this.buffer = null; this.loop = false; this.loopStart = 0; this.loopEnd = 0; if (kind) nodeCount[kind]++; }
         FakeNode.prototype.connect = function () { };
         FakeNode.prototype.disconnect = function () { };
         FakeNode.prototype.start = function () { };
@@ -236,7 +236,7 @@
           createBufferSource: function () { return new FakeNode('noise'); },
           createBiquadFilter: function () { return new FakeNode('filter'); },
           createStereoPanner: function () { return new FakeNode('panner'); },
-          createBuffer: function (ch, len) { return { getChannelData: function () { return new Float32Array(len); } }; }
+          createBuffer: function (ch, len, rate) { return { duration: len / rate, sampleRate: rate, getChannelData: function () { return new Float32Array(len); } }; }
         };
         var engine = MIDI.createEngine(fakeCtx);
         var raw = VM.base64ToBytes(VM_RESOURCES['snd.f']);
