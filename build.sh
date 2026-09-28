@@ -11,6 +11,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 JAR="${DR_JAR:-钻石狂潮.jar}"
+JAR_L="${DR_JAR_L:-diamond_CP.jar}"
 OUT="${DR_OUT:-钻石狂潮.html}"
 
 if [ ! -f "$JAR" ]; then
@@ -23,7 +24,14 @@ fi
 command -v python3 >/dev/null || { echo "需要 Python 3" >&2; exit 1; }
 
 echo "[1/3] 提取类与资源 ..."
-python3 tools/build_assets.py --jar "$JAR"
+ASSET_ARGS=(--portrait "$JAR")
+if [ -f "$JAR_L" ]; then
+  ASSET_ARGS+=(--landscape "$JAR_L")
+  echo "      竖屏：$JAR  横屏：$JAR_L"
+else
+  echo "      未找到横屏版 JAR（$JAR_L），仅构建竖屏版（可用 DR_JAR_L 指定）"
+fi
+python3 tools/build_assets.py "${ASSET_ARGS[@]}"
 
 BANK="${DR_BANK:-Nokia Sound Font/Charlie Bank.dls}"
 if [ -f "$BANK" ]; then

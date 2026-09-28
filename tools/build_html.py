@@ -23,12 +23,18 @@ def main():
 
     missing = []
 
+    OPTIONAL_STUBS = {
+        'assets/soundfont.js': 'var DR_SOUNDFONT=null;',
+        'assets/classes.l.js': 'var VM_CLASSES_L=null;',
+        'assets/resources.l.js': 'var VM_RESOURCES_L=null;',
+    }
+
     def repl(m):
         src = m.group(1)
         path = os.path.join(ROOT, 'src', src)
         if not os.path.isfile(path):
-            if src == 'assets/soundfont.js':
-                return '<script>\nvar DR_SOUNDFONT=null;\n</script>'
+            if src in OPTIONAL_STUBS:
+                return '<script>\n' + OPTIONAL_STUBS[src] + '\n</script>'
             missing.append(path)
             return ''
         code = open(path, encoding='utf-8').read()

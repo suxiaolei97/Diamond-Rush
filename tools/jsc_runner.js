@@ -96,14 +96,15 @@
   var shotIdx = 0;
   function shot(name) {
     var px = VM.instances.screen.$pixels;
-    var rgb = new Uint8Array(240 * 320 * 3);
-    for (var i = 0; i < 240 * 320; i++) {
+    var w = VM.instances.screenW || 240, h = VM.instances.screenH || 320;
+    var rgb = new Uint8Array(w * h * 3);
+    for (var i = 0; i < w * h; i++) {
       var p = px[i];
       rgb[i * 3] = (p >> 16) & 0xFF;
       rgb[i * 3 + 1] = (p >> 8) & 0xFF;
       rgb[i * 3 + 2] = p & 0xFF;
     }
-    print('SHOT ' + (name || ('f' + (shotIdx++))) + ' ' + base64Bytes(rgb));
+    print('SHOT ' + (name || ('f' + (shotIdx++))) + ' ' + w + ' ' + h + ' ' + base64Bytes(rgb));
   }
 
   // ---- load manifest props ----
@@ -124,18 +125,40 @@
     return props;
   }
 
-  var manifestText = readFile('reversed/resources/META-INF/MANIFEST.MF');
+  // ---- orientation variant (portrait original / 320x240 Diamond_CP) ----
+  var __orient = 'p';
+  try { if (String(readFile('harness/orient.flag')).replace(/\s+/g, '') === 'l') __orient = 'l'; } catch (e) { }
+  if (__orient === 'l' && (typeof VM_CLASSES_L === 'undefined' || !VM_CLASSES_L)) __orient = 'p';
+  (function () {
+    var shared = (typeof VM_RESOURCES !== 'undefined' && VM_RESOURCES) || {};
+    var variant = __orient === 'l'
+      ? (typeof VM_RESOURCES_L !== 'undefined' ? VM_RESOURCES_L : {})
+      : (typeof VM_RESOURCES_P !== 'undefined' ? VM_RESOURCES_P : {});
+    var merged = {}, k;
+    for (k in shared) merged[k] = shared[k];
+    for (k in variant) merged[k] = variant[k];
+    if (typeof globalThis !== 'undefined') {
+      globalThis.VM_RESOURCES = merged;
+      globalThis.VM_CLASSES = (__orient === 'l') ? VM_CLASSES_L : VM_CLASSES_P;
+    }
+    VM.instances.screenW = __orient === 'l' ? 320 : 240;
+    VM.instances.screenH = __orient === 'l' ? 240 : 320;
+    print('[orient] ' + __orient + ' ' + VM.instances.screenW + 'x' + VM.instances.screenH);
+  })();
+
+  var manifestText = '';
+  try { manifestText = readFile('reversed/resources/META-INF/MANIFEST.MF'); } catch (e) { }
   var props = loadManifest(manifestText);
   // extra system properties
   props['microedition.platform'] = 'j2me';
   props['microedition.locale'] = 'en-US';
 
   // ---- boot ----
-  if (typeof VM.setTrace === 'function' && readFile('harness/trace.flag') === '1') VM.setTrace(true);
+  try { if (typeof VM.setTrace === 'function' && readFile('harness/trace.flag') === '1') VM.setTrace(true); } catch (e) { }
   try {
-    if (String(readFile('harness/sound.flag')).replace(/\s+/g,'') === '1') VM.instances.logSound = true;
-    if (String(readFile('harness/text.flag')).replace(/\s+/g,'') === '1') VM.instances.logText = true;
-    if (String(readFile('harness/fakeaudio.flag')).replace(/\s+/g,'') === '1') {
+    try { if (String(readFile('harness/sound.flag')).replace(/\s+/g,'') === '1') VM.instances.logSound = true; } catch (e) { }
+    try { if (String(readFile('harness/text.flag')).replace(/\s+/g,'') === '1') VM.instances.logText = true; } catch (e) { }
+    try { if (String(readFile('harness/fakeaudio.flag')).replace(/\s+/g,'') === '1') {
       VM.instances.audio = {
         play: function (player) {
           var dur = 5;
@@ -147,7 +170,7 @@
         stop: function () { },
         setVolume: function () { }
       };
-    }
+    } } catch (e) { }
     if (String(readFile('harness/sound.flag')).replace(/\s+/g,'') === '1' && String(readFile('harness/fakeaudio.flag')).replace(/\s+/g,'') === '1') {
       var jcls0 = VM.getClass('j');
       var origPU = jcls0.methods['playerUpdate:(Ljavax/microedition/media/Player;Ljava/lang/String;Ljava/lang/Object;)V'];

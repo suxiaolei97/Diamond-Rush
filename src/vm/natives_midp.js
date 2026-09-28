@@ -511,8 +511,8 @@
 
     // ---------------- Displayable / Canvas / Display ----------------
     var Displayable_ = reg('javax/microedition/lcdui/Displayable', 'java/lang/Object');
-    N(Displayable_, 'getWidth', '()I', function (VM, self, a) { return 240; });
-    N(Displayable_, 'getHeight', '()I', function (VM, self, a) { return 320; });
+    N(Displayable_, 'getWidth', '()I', function (VM, self, a) { return VM.instances.screenW; });
+    N(Displayable_, 'getHeight', '()I', function (VM, self, a) { return VM.instances.screenH; });
     N(Displayable_, 'isShown', '()Z', function (VM, self, a) { return 1; });
 
     var Canvas_ = reg('javax/microedition/lcdui/Canvas', 'javax/microedition/lcdui/Displayable');
@@ -768,7 +768,9 @@
     reg('javax/microedition/media/MediaException', 'java/lang/Exception');
 
     // ---------------- screen ----------------
-    VM.instances.screen = makeImage(240, 320);
+    VM.instances.screenW = VM.instances.screenW || 240;
+    VM.instances.screenH = VM.instances.screenH || 320;
+    VM.instances.screen = makeImage(VM.instances.screenW, VM.instances.screenH);
     VM.instances.screenGfx = newGfx(VM.instances.screen);
     VM.instances.screen.$pixels.fill(0xFF000000);
     VM.instances.screenDirty = true;

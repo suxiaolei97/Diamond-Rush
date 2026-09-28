@@ -26,8 +26,13 @@ def main():
             continue
         parts = line.split()
         name = parts[1]
-        data = base64.b64decode(parts[2])
-        write_png(os.path.join(outdir, name + '.png'), 240, 320, data)
+        if len(parts) >= 5:
+            w, h = int(parts[2]), int(parts[3])
+            data = base64.b64decode(parts[4])
+        else:
+            w, h = 240, 320
+            data = base64.b64decode(parts[2])
+        write_png(os.path.join(outdir, name + '.png'), w, h, data)
         n += 1
     print('decoded', n, 'shots ->', outdir)
 

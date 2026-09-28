@@ -11,7 +11,11 @@
 
 # ---- 本地生成资源（由 tools/build_assets.py 生成）----
 /src/assets/classes.js
+/src/assets/classes.p.js
+/src/assets/classes.l.js
 /src/assets/resources.js
+/src/assets/resources.p.js
+/src/assets/resources.l.js
 /src/assets/soundfont.js
 
 # ---- 开发工具二进制（按需下载，见 THIRD-PARTY.md）----

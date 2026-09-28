@@ -87,6 +87,52 @@
     }
   };
 
+  // ---------------- orientation / asset variants ----------------
+  // The portrait original and the 320x240 Diamond_CP builds are shipped
+  // side by side; the app boots the one matching the window/device and
+  // offers a manual toggle (page reload, preference persisted).
+  function hasLandscape() {
+    return typeof VM_CLASSES_L !== 'undefined' && !!VM_CLASSES_L;
+  }
+
+  function currentOrient() {
+    var v = null;
+    try { v = localStorage.getItem('dr_orient'); } catch (e) { }
+    if (v !== 'p' && v !== 'l') {
+      var wide = (typeof window !== 'undefined') && window.innerWidth > window.innerHeight;
+      v = (wide && hasLandscape()) ? 'l' : 'p';
+    }
+    return v === 'l' && hasLandscape() ? 'l' : 'p';
+  }
+
+  function setGlobal(name, value) {
+    if (typeof globalThis !== 'undefined') globalThis[name] = value;
+    else if (typeof window !== 'undefined') window[name] = value;
+  }
+
+  function applyVariant(orient) {
+    var shared = (typeof VM_RESOURCES !== 'undefined' && VM_RESOURCES) || {};
+    var variant = orient === 'l'
+      ? (typeof VM_RESOURCES_L !== 'undefined' ? VM_RESOURCES_L : null)
+      : (typeof VM_RESOURCES_P !== 'undefined' ? VM_RESOURCES_P : null);
+    if (!variant) return false;
+    var merged = {};
+    for (var k in shared) merged[k] = shared[k];
+    for (k in variant) merged[k] = variant[k];
+    setGlobal('VM_RESOURCES', merged);
+    if (orient === 'l' && hasLandscape()) setGlobal('VM_CLASSES', VM_CLASSES_L);
+    else if (typeof VM_CLASSES_P !== 'undefined') setGlobal('VM_CLASSES', VM_CLASSES_P);
+    VM.instances.screenW = orient === 'l' ? 320 : 240;
+    VM.instances.screenH = orient === 'l' ? 240 : 320;
+    return true;
+  }
+
+  function toggleOrient() {
+    var next = currentOrient() === 'l' ? 'p' : 'l';
+    try { localStorage.setItem('dr_orient', next); } catch (e) { }
+    location.reload();
+  }
+
   // ---------------- screen ----------------
   var screenCanvas, screenCtx, offCanvas, offCtx, imageData;
   var fitPref = null;
@@ -105,9 +151,15 @@
 
   function render() {
     if (!VM.instances.screen) return;
+    var sw = VM.instances.screenW || 240, sh = VM.instances.screenH || 320;
+    if (offCanvas.width !== sw || offCanvas.height !== sh) {
+      offCanvas.width = sw;
+      offCanvas.height = sh;
+      imageData = offCtx.createImageData(sw, sh);
+    }
     var px = VM.instances.screen.$pixels;
     var data = imageData.data;
-    for (var i = 0; i < 240 * 320; i++) {
+    for (var i = 0; i < sw * sh; i++) {
       var p = px[i];
       var o = i << 2;
       data[o] = (p >> 16) & 0xFF;
@@ -129,10 +181,10 @@
     screenCtx.fillStyle = '#000';
     screenCtx.fillRect(0, 0, vw, vh);
     screenCtx.imageSmoothingEnabled = false;
-    var scale = fitMode ? Math.min(vw / 240, vh / 320) : Math.max(1, Math.floor(Math.min(vw / 240, vh / 320)));
-    var dw = Math.round(240 * scale), dh = Math.round(320 * scale);
+    var scale = fitMode ? Math.min(vw / sw, vh / sh) : Math.max(1, Math.floor(Math.min(vw / sw, vh / sh)));
+    var dw = Math.round(sw * scale), dh = Math.round(sh * scale);
     var dx = Math.round((vw - dw) / 2), dy = Math.round((vh - dh) / 2);
-    screenCtx.drawImage(offCanvas, 0, 0, 240, 320, dx, dy, dw, dh);
+    screenCtx.drawImage(offCanvas, 0, 0, sw, sh, dx, dy, dw, dh);
   }
 
   // ---------------- input ----------------
@@ -291,6 +343,7 @@
   }
 
   function boot() {
+    applyVariant(currentOrient());
     initScreen();
     initKeyboard();
     initTouchControls();
@@ -306,6 +359,14 @@
     if (btnTone) {
       btnTone.addEventListener('click', toggleTone);
       if (typeof window !== 'undefined' && !window.DR_SOUNDFONT) btnTone.hidden = true;
+    }
+    var btnOrient = document.getElementById('btn-orient');
+    if (btnOrient && hasLandscape()) {
+      var orient = currentOrient();
+      btnOrient.hidden = false;
+      btnOrient.textContent = orient === 'l' ? '纵' : '横';
+      btnOrient.title = orient === 'l' ? '切换到竖屏原版（240×320）' : '切换到横屏版（320×240）';
+      btnOrient.addEventListener('click', toggleOrient);
     }
     var btnRestart = document.getElementById('btn-restart');
     if (btnRestart) btnRestart.addEventListener('click', function () { location.reload(); });

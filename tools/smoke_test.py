@@ -67,11 +67,12 @@ var window = {
   innerWidth: 400, innerHeight: 800,
   addEventListener: function(){},
   removeEventListener: function(){},
-  localStorage: { getItem: function(){ return null; }, setItem: function(){} },
+  localStorage: { getItem: function(k){ return (k === 'dr_orient' && typeof $ENV_ORIENT !== 'undefined' && $ENV_ORIENT) ? $ENV_ORIENT : null; }, setItem: function(){} },
   navigator: { maxTouchPoints: 0, userAgent: 'jsc-test' },
   requestAnimationFrame: function(fn){ return 0; }
 };
 if (!__TOUCH) { delete window.ontouchstart; }
+if (typeof $ENV_ORIENT !== 'undefined' && $ENV_ORIENT === 'l') { window.innerWidth = 900; window.innerHeight = 500; }
 var navigator = window.navigator;
 var localStorage = window.localStorage;
 var requestAnimationFrame = function(){ return 0; };
@@ -126,8 +127,10 @@ def main():
     scripts = re.findall(r'<script>(.*?)</script>', html, re.S)
     print('found', len(scripts), 'inline scripts')
     touch = os.environ.get('SMOKE_TOUCH', '0') == '1'
+    orient = os.environ.get('SMOKE_ORIENT', '')
     with open(OUT, 'w', encoding='utf-8') as f:
         f.write('var $ENV_TOUCH = %s;\n' % ('true' if touch else 'false'))
+        f.write('var $ENV_ORIENT = %s;\n' % (repr(orient) if orient else 'null'))
         f.write(STUBS)
         for s in scripts:
             f.write('\n;\n')

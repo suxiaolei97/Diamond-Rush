@@ -5,9 +5,17 @@ import os
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.environ.get('DR_TEST_JS', '/tmp/dr_test.js')
 
-FILES = [
-    'src/assets/classes.js',
+ASSETS = [
+    'src/assets/classes.p.js',
     'src/assets/resources.js',
+    'src/assets/resources.p.js',
+]
+OPTIONAL_ASSETS = [
+    'src/assets/classes.l.js',
+    'src/assets/resources.l.js',
+    'src/assets/soundfont.js',
+]
+FILES = [
     'src/vm/fontdata.js',
     'src/vm/classfile.js',
     'src/vm/zlib.js',
@@ -19,15 +27,10 @@ FILES = [
     'tools/jsc_runner.js',
 ]
 
-OPTIONAL_FILES = [
-    'src/assets/soundfont.js',
-]
-
 def main():
-    order = list(FILES)
-    for f in OPTIONAL_FILES:
-        if os.path.isfile(os.path.join(ROOT, f)):
-            order.insert(2, f)   # before the VM sources (they execute on load)
+    order = list(ASSETS)
+    order += [f for f in OPTIONAL_ASSETS if os.path.isfile(os.path.join(ROOT, f))]
+    order += FILES
     with open(OUT, 'w') as out:
         for f in order:
             with open(os.path.join(ROOT, f)) as inp:
