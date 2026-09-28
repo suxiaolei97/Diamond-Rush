@@ -741,8 +741,10 @@ var SoundFont = (function () {
   function attach(ctx, prep) {
     var data = prep.data;
     var waves = prep.buffers;
+    if (waves && prep.buffersCtx !== ctx) waves = null;   // buffers belong to one AudioContext
     if (!waves) {
       waves = prep.buffers = [];
+      prep.buffersCtx = ctx;
       for (var i = 0; i < prep.pcm.length; i++) {
         var pcm = prep.pcm[i];
         var buf = ctx.createBuffer(1, pcm.length, prep.rates[i]);
@@ -1940,6 +1942,7 @@ var VM = (function () {
   // Hold the release back until the press has lived for MIN_PRESS_MS.
   var MIN_PRESS_MS = 70;
   var deferredReleases = {};
+  var releaseTimer = null;
 
   function deliverInput() {
     var now = Date.now();
@@ -1983,9 +1986,15 @@ var VM = (function () {
       }
     }
     currentThread = prev;
-    if (vm.pendingInput.length) {
-      // deferred releases need a wake-up even if every thread is sleeping
-      if (typeof setTimeout !== 'undefined') setTimeout(function () { schedule(); }, MIN_PRESS_MS);
+    // deferred releases need a wake-up at their exact due time even if every
+    // thread is sleeping
+    var nextDue = Infinity;
+    for (var dc2 in deferredReleases) {
+      var d2 = deferredReleases[dc2][2] + MIN_PRESS_MS - now;
+      if (d2 < nextDue) nextDue = d2;
+    }
+    if (nextDue < Infinity && releaseTimer === null && typeof setTimeout !== 'undefined') {
+      releaseTimer = setTimeout(function () { releaseTimer = null; schedule(); }, Math.max(1, nextDue));
     }
   }
 
@@ -4217,6 +4226,7 @@ var VM = (function () {
       imageData = offCtx.createImageData(sw, sh);
       blit32 = new Uint32Array(imageData.data.buffer);
     }
+    if (viewW === 0) updateViewport();
     if (!resized && !VM.instances.screenDirty) {
       if (perfEnabled) { perfFrames++; perfRenderMs += Date.now() - t0; }
       return;
@@ -4268,11 +4278,6 @@ var VM = (function () {
   // hide it there); the pad toggle only persists on non-touch devices.
   var showPad = isTouchDevice || padPref === '1';
   var pressed = {};
-
-  function press(code, down) {
-    if (down && touchDevice) { }
-    VM.inputKey(code, down);
-  }
 
   var KEYMAP = {
     ArrowUp: -1, ArrowDown: -2, ArrowLeft: -3, ArrowRight: -4,

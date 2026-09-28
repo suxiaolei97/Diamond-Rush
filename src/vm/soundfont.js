@@ -119,8 +119,10 @@ var SoundFont = (function () {
   function attach(ctx, prep) {
     var data = prep.data;
     var waves = prep.buffers;
+    if (waves && prep.buffersCtx !== ctx) waves = null;   // buffers belong to one AudioContext
     if (!waves) {
       waves = prep.buffers = [];
+      prep.buffersCtx = ctx;
       for (var i = 0; i < prep.pcm.length; i++) {
         var pcm = prep.pcm[i];
         var buf = ctx.createBuffer(1, pcm.length, prep.rates[i]);

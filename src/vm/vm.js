@@ -546,6 +546,7 @@ var VM = (function () {
   // Hold the release back until the press has lived for MIN_PRESS_MS.
   var MIN_PRESS_MS = 70;
   var deferredReleases = {};
+  var releaseTimer = null;
 
   function deliverInput() {
     var now = Date.now();
@@ -589,9 +590,15 @@ var VM = (function () {
       }
     }
     currentThread = prev;
-    if (vm.pendingInput.length) {
-      // deferred releases need a wake-up even if every thread is sleeping
-      if (typeof setTimeout !== 'undefined') setTimeout(function () { schedule(); }, MIN_PRESS_MS);
+    // deferred releases need a wake-up at their exact due time even if every
+    // thread is sleeping
+    var nextDue = Infinity;
+    for (var dc2 in deferredReleases) {
+      var d2 = deferredReleases[dc2][2] + MIN_PRESS_MS - now;
+      if (d2 < nextDue) nextDue = d2;
+    }
+    if (nextDue < Infinity && releaseTimer === null && typeof setTimeout !== 'undefined') {
+      releaseTimer = setTimeout(function () { releaseTimer = null; schedule(); }, Math.max(1, nextDue));
     }
   }
 

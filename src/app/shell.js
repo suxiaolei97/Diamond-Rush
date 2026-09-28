@@ -221,6 +221,7 @@
       imageData = offCtx.createImageData(sw, sh);
       blit32 = new Uint32Array(imageData.data.buffer);
     }
+    if (viewW === 0) updateViewport();
     if (!resized && !VM.instances.screenDirty) {
       if (perfEnabled) { perfFrames++; perfRenderMs += Date.now() - t0; }
       return;
@@ -272,11 +273,6 @@
   // hide it there); the pad toggle only persists on non-touch devices.
   var showPad = isTouchDevice || padPref === '1';
   var pressed = {};
-
-  function press(code, down) {
-    if (down && touchDevice) { }
-    VM.inputKey(code, down);
-  }
 
   var KEYMAP = {
     ArrowUp: -1, ArrowDown: -2, ArrowLeft: -3, ArrowRight: -4,
