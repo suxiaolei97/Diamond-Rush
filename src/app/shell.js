@@ -165,7 +165,7 @@
   var screenCanvas, screenCtx, offCanvas, offCtx, imageData, blit32;
   var viewW = 0, viewH = 0, viewDpr = 1;
   var perfEnabled = false;
-  try { perfEnabled = typeof location !== 'undefined' && /[?&]perf=1(&|$)/.test(location.search); } catch (e) { }
+  try { perfEnabled = typeof location !== 'undefined' && /[?&#]perf=1(&|$)/.test(location.search + '&' + location.hash); } catch (e) { }
   var perfEl = null, perfFrames = 0, perfRenderMs = 0, perfLast = 0;
   var fitPref = null;
   try { fitPref = (typeof localStorage !== 'undefined') ? localStorage.getItem('dr_fit') : null; } catch (e) { }
