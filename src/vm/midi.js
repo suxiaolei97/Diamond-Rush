@@ -198,6 +198,9 @@ var MIDI = (function () {
     if (sfData && typeof SoundFont !== 'undefined') {
       try { sf = SoundFont.create(ctx, sfData); } catch (e) { sf = null; }
     }
+    var toneEnabled = !!sf;
+    var lastPlayer = null;
+    var lastVolume = 100;
 
     function stopActive() {
       if (endTimer !== null) { clearTimeout(endTimer); endTimer = null; }
@@ -214,6 +217,8 @@ var MIDI = (function () {
 
     function play(player, volume) {
       stopActive();
+      lastPlayer = player;
+      if (volume !== undefined) lastVolume = volume;
       var data = player.$data;
       if (!data || data.length < 14) return;
       var song;
@@ -238,7 +243,7 @@ var MIDI = (function () {
 
       function startVoice(ch, note, vel, at) {
         if (ch === 9) {
-          if (sf) {
+          if (sf && toneEnabled) {
             var dv = sf.startVoice(master, {
               isDrum: true, ch: ch, note: note, vel: vel, at: at,
               chanVol: Math.pow(chanVol[ch] / 127, 1.2),
@@ -255,7 +260,7 @@ var MIDI = (function () {
           startDrum(note, vel, at);
           return;
         }
-        if (sf) {
+        if (sf && toneEnabled) {
           var sv = sf.startVoice(master, {
             isDrum: false, ch: ch, note: note, vel: vel, at: at,
             prog: chanProg[ch], chanVol: Math.pow(chanVol[ch] / 127, 1.3),
@@ -458,7 +463,17 @@ var MIDI = (function () {
       master.gain.value = Math.max(0, Math.min(1, level / 100)) * 0.6;
     }
 
-    return { play: play, stop: stop, setVolume: setVolume, context: ctx };
+    // A/B switch between the embedded Nokia sample bank and the built-in synth.
+    function setTone(enabled) {
+      toneEnabled = !!sf && !!enabled;
+      if (lastPlayer && lastPlayer.$state === 400) play(lastPlayer, lastVolume);
+      return toneEnabled;
+    }
+
+    return {
+      play: play, stop: stop, setVolume: setVolume, context: ctx,
+      setTone: setTone, hasTone: !!sf
+    };
   }
 
   function unlockAudio() {

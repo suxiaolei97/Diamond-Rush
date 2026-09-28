@@ -46,6 +46,28 @@
   }
 
   // ---------------- audio ----------------
+  var tonePref = true;
+  try { tonePref = localStorage.getItem('dr_tone') !== '0'; } catch (e) { }
+
+  function updateToneButton(on) {
+    var b = document.getElementById('btn-tone');
+    if (!b) return;
+    b.hidden = false;
+    b.textContent = on ? 'SF' : 'SYN';
+    b.title = on ? '音色：诺基亚原机采样（点击切到内置合成器）' : '音色：内置合成器（点击切到诺基亚原机采样）';
+  }
+
+  function applyTone(engine) {
+    if (!engine || !engine.hasTone) return;
+    updateToneButton(engine.setTone(tonePref));
+  }
+
+  function toggleTone() {
+    tonePref = !tonePref;
+    try { localStorage.setItem('dr_tone', tonePref ? '1' : '0'); } catch (e) { }
+    applyTone(deferredAudio.engine);
+  }
+
   var deferredAudio = {
     last: null,
     engine: null,
@@ -56,6 +78,7 @@
       if (this.engine) return;
       this.engine = MIDI.unlockAudio();
       if (this.engine) {
+        applyTone(this.engine);
         VM.instances.audio = this.engine;
         if (this.last && this.last.$state === 400) {
           this.engine.play(this.last, this.last.$volume);
@@ -279,6 +302,11 @@
     document.getElementById('btn-keypad').addEventListener('click', toggleKeypad);
     var btnPad = document.getElementById('btn-pad');
     if (btnPad) btnPad.addEventListener('click', togglePad);
+    var btnTone = document.getElementById('btn-tone');
+    if (btnTone) {
+      btnTone.addEventListener('click', toggleTone);
+      if (typeof window !== 'undefined' && !window.DR_SOUNDFONT) btnTone.hidden = true;
+    }
     var btnRestart = document.getElementById('btn-restart');
     if (btnRestart) btnRestart.addEventListener('click', function () { location.reload(); });
     var btnClose = document.getElementById('btn-close');

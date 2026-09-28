@@ -161,6 +161,7 @@
       <button id="btn-keypad" title="数字键盘">#</button>
       <button id="btn-lang" title="语言">简</button>
       <button id="btn-pad" title="虚拟按键">🎮</button>
+      <button id="btn-tone" title="音色：诺基亚原机采样 / 内置合成器" hidden>SF</button>
     </div>
     <div id="hint">方向键移动 · 空格/回车 攻击确认 · Q/W 左右软键 · 数字键秘籍 · F 全屏 · Esc 数字面板</div>
   </div>
@@ -1053,6 +1054,9 @@ var MIDI = (function () {
     if (sfData && typeof SoundFont !== 'undefined') {
       try { sf = SoundFont.create(ctx, sfData); } catch (e) { sf = null; }
     }
+    var toneEnabled = !!sf;
+    var lastPlayer = null;
+    var lastVolume = 100;
 
     function stopActive() {
       if (endTimer !== null) { clearTimeout(endTimer); endTimer = null; }
@@ -1069,6 +1073,8 @@ var MIDI = (function () {
 
     function play(player, volume) {
       stopActive();
+      lastPlayer = player;
+      if (volume !== undefined) lastVolume = volume;
       var data = player.$data;
       if (!data || data.length < 14) return;
       var song;
@@ -1093,7 +1099,7 @@ var MIDI = (function () {
 
       function startVoice(ch, note, vel, at) {
         if (ch === 9) {
-          if (sf) {
+          if (sf && toneEnabled) {
             var dv = sf.startVoice(master, {
               isDrum: true, ch: ch, note: note, vel: vel, at: at,
               chanVol: Math.pow(chanVol[ch] / 127, 1.2),
@@ -1110,7 +1116,7 @@ var MIDI = (function () {
           startDrum(note, vel, at);
           return;
         }
-        if (sf) {
+        if (sf && toneEnabled) {
           var sv = sf.startVoice(master, {
             isDrum: false, ch: ch, note: note, vel: vel, at: at,
             prog: chanProg[ch], chanVol: Math.pow(chanVol[ch] / 127, 1.3),
@@ -1313,7 +1319,17 @@ var MIDI = (function () {
       master.gain.value = Math.max(0, Math.min(1, level / 100)) * 0.6;
     }
 
-    return { play: play, stop: stop, setVolume: setVolume, context: ctx };
+    // A/B switch between the embedded Nokia sample bank and the built-in synth.
+    function setTone(enabled) {
+      toneEnabled = !!sf && !!enabled;
+      if (lastPlayer && lastPlayer.$state === 400) play(lastPlayer, lastVolume);
+      return toneEnabled;
+    }
+
+    return {
+      play: play, stop: stop, setVolume: setVolume, context: ctx,
+      setTone: setTone, hasTone: !!sf
+    };
   }
 
   function unlockAudio() {
@@ -3904,6 +3920,28 @@ var VM = (function () {
   }
 
   // ---------------- audio ----------------
+  var tonePref = true;
+  try { tonePref = localStorage.getItem('dr_tone') !== '0'; } catch (e) { }
+
+  function updateToneButton(on) {
+    var b = document.getElementById('btn-tone');
+    if (!b) return;
+    b.hidden = false;
+    b.textContent = on ? 'SF' : 'SYN';
+    b.title = on ? '音色：诺基亚原机采样（点击切到内置合成器）' : '音色：内置合成器（点击切到诺基亚原机采样）';
+  }
+
+  function applyTone(engine) {
+    if (!engine || !engine.hasTone) return;
+    updateToneButton(engine.setTone(tonePref));
+  }
+
+  function toggleTone() {
+    tonePref = !tonePref;
+    try { localStorage.setItem('dr_tone', tonePref ? '1' : '0'); } catch (e) { }
+    applyTone(deferredAudio.engine);
+  }
+
   var deferredAudio = {
     last: null,
     engine: null,
@@ -3914,6 +3952,7 @@ var VM = (function () {
       if (this.engine) return;
       this.engine = MIDI.unlockAudio();
       if (this.engine) {
+        applyTone(this.engine);
         VM.instances.audio = this.engine;
         if (this.last && this.last.$state === 400) {
           this.engine.play(this.last, this.last.$volume);
@@ -4137,6 +4176,11 @@ var VM = (function () {
     document.getElementById('btn-keypad').addEventListener('click', toggleKeypad);
     var btnPad = document.getElementById('btn-pad');
     if (btnPad) btnPad.addEventListener('click', togglePad);
+    var btnTone = document.getElementById('btn-tone');
+    if (btnTone) {
+      btnTone.addEventListener('click', toggleTone);
+      if (typeof window !== 'undefined' && !window.DR_SOUNDFONT) btnTone.hidden = true;
+    }
     var btnRestart = document.getElementById('btn-restart');
     if (btnRestart) btnRestart.addEventListener('click', function () { location.reload(); });
     var btnClose = document.getElementById('btn-close');
