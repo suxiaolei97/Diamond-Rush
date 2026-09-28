@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="theme-color" content="#000000">
+<title>钻石狂潮 Diamond Rush</title>
+<style>
+  :root {
+    --pad-bg: rgba(20, 20, 24, 0.92);
+    --key-bg: #33343c;
+    --key-bg-active: #5a5d6b;
+    --key-fg: #e8e8ee;
+    --accent: #e8a33d;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    background: #000; color: #ddd;
+    overflow: hidden; position: fixed; touch-action: none;
+    user-select: none; -webkit-user-select: none;
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    overscroll-behavior: none;
+  }
+  #app { position: absolute; inset: 0; display: flex; flex-direction: column; }
+  #stage {
+    position: relative; flex: 1 1 auto; min-height: 0;
+    padding: var(--safe-top) var(--safe-right) 0 var(--safe-left);
+  }
+  #screen {
+    position: absolute; left: 0; top: var(--safe-top);
+    width: 100%; height: calc(100% - var(--safe-top));
+    image-rendering: pixelated; image-rendering: crisp-edges;
+    background: #000; display: block;
+  }
+  #loading {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: #000; color: #e8a33d; font-size: 18px; letter-spacing: 2px; z-index: 50;
+  }
+  #hud {
+    position: absolute; top: calc(8px + var(--safe-top)); right: calc(8px + var(--safe-right));
+    display: flex; gap: 8px; z-index: 20;
+  }
+  #hud button {
+    width: 36px; height: 36px; border-radius: 8px; border: 1px solid #555;
+    background: rgba(30,30,36,.8); color: #ddd; font-size: 16px; cursor: pointer;
+  }
+  #hud button:active { background: #555; }
+
+  #controls { display: none; }
+  body.touch #controls { display: flex; }
+
+  /* portrait */
+  body.touch:not(.landscape) #controls {
+    flex: 0 0 auto; height: 200px;
+    padding: 10px 12px calc(10px + var(--safe-bottom)) 12px;
+    background: var(--pad-bg);
+    align-items: center; justify-content: space-between;
+  }
+  /* landscape */
+  body.touch.landscape #app { flex-direction: row; }
+  body.touch.landscape #controls {
+    flex: 0 0 auto; width: 100%; height: auto;
+    position: absolute; inset: 0; pointer-events: none;
+    background: transparent;
+  }
+  body.touch.landscape #dpad,
+  body.touch.landscape #actions {
+    position: absolute; bottom: calc(10px + var(--safe-bottom));
+    pointer-events: auto;
+  }
+  body.touch.landscape #dpad { left: calc(10px + var(--safe-left)); }
+  body.touch.landscape #actions {
+    right: calc(14px + var(--safe-right));
+    bottom: calc(12px + var(--safe-bottom));
+  }
+
+  #dpad {
+    position: relative; width: 156px; height: 156px;
+    display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
+    gap: 4px;
+  }
+  #dpad .key { font-size: 20px; }
+  #dpad [data-key="-1"] { grid-column: 2; grid-row: 1; }
+  #dpad [data-key="-3"] { grid-column: 1; grid-row: 2; }
+  #dpad [data-key="-4"] { grid-column: 3; grid-row: 2; }
+  #dpad [data-key="-2"] { grid-column: 2; grid-row: 3; }
+
+  #actions {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 10px; padding-bottom: 6px;
+  }
+  #actions .aux-row { display: flex; gap: 12px; }
+  #actions .softkey { min-width: 58px; height: 46px; font-size: 15px; }
+  #actions .key.big { margin-top: 4px; }
+  .key {
+    min-width: 52px; height: 52px; padding: 0 8px;
+    border-radius: 10px; border: 1px solid #4a4b55;
+    background: linear-gradient(#3d3e47, #2a2b32); color: var(--key-fg);
+    font-size: 15px; font-weight: 600; display: flex; align-items: center; justify-content: center;
+    touch-action: none; cursor: pointer;
+  }
+  .key.wide { min-width: 72px; }
+  .key.big { width: 84px; height: 84px; border-radius: 50%; font-size: 20px; }
+  .key.active { background: var(--key-bg-active); transform: scale(0.96); }
+  .key small { display: block; font-size: 9px; font-weight: 400; color: #aaa; margin-top: 2px; }
+
+  #numpad {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    bottom: calc(8px + var(--safe-bottom));
+    grid-template-columns: repeat(6, 1fr); gap: 6px;
+    background: rgba(15,15,18,.95); padding: 10px; border-radius: 12px;
+    z-index: 30; display: grid;
+  }
+  #numpad[hidden] { display: none; }
+  #numpad .key { min-width: 44px; height: 40px; font-size: 14px; }
+
+  #exit-overlay {
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(0,0,0,.88); color: #eee;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #exit-overlay[hidden] { display: none; }
+  .exit-panel {
+    text-align: center; padding: 24px 28px; border: 1px solid #555;
+    border-radius: 14px; background: #17181d; max-width: 300px;
+  }
+  .exit-panel h2 { margin: 0 0 10px; font-size: 20px; color: #e8a33d; }
+  .exit-panel p { margin: 6px 0; font-size: 13px; color: #bbb; }
+  .exit-row { display: flex; gap: 12px; justify-content: center; margin: 16px 0 6px; }
+  .exit-row button {
+    padding: 10px 16px; font-size: 15px; border-radius: 8px; border: 1px solid #666;
+    background: #2c2d35; color: #eee; cursor: pointer;
+  }
+  .exit-row button:active { background: #4a4c58; }
+  .exit-note { font-size: 11px; color: #777; }
+
+  #hint {
+    position: absolute; left: 8px; bottom: calc(8px + var(--safe-bottom));
+    color: #666; font-size: 11px; z-index: 10; pointer-events: none;
+  }
+  body.touch #hint { display: none; }
+</style>
+</head>
+<body>
+<div id="loading">加载中…</div>
+<div id="app">
+  <div id="stage">
+    <canvas id="screen"></canvas>
+    <div id="hud">
+      <button id="btn-fit" title="缩放模式">⤢</button>
+      <button id="btn-full" title="全屏">⛶</button>
+      <button id="btn-keypad" title="数字键盘">#</button>
+      <button id="btn-lang" title="语言">简</button>
+      <button id="btn-pad" title="虚拟按键">🎮</button>
+    </div>
+    <div id="hint">方向键移动 · 空格/回车 攻击确认 · Q/W 左右软键 · 数字键秘籍 · F 全屏 · Esc 数字面板</div>
+  </div>
+  <div id="controls">
+    <div id="dpad">
+      <div class="key" data-key="-1">▲</div>
+      <div class="key" data-key="-3">◀</div>
+      <div class="key" data-key="-4">▶</div>
+      <div class="key" data-key="-2">▼</div>
+    </div>
+    <div id="actions">
+      <div class="aux-row">
+        <div class="key softkey" data-key="-6">L<small>左软键</small></div>
+        <div class="key softkey" data-key="-7">R<small>右软键</small></div>
+      </div>
+      <div class="key big" data-key="-5">OK<small>攻击/确认</small></div>
+    </div>
+  </div>
+  <div id="exit-overlay" hidden>
+    <div class="exit-panel">
+      <h2>游戏已退出</h2>
+      <p>原版流程已结束，页面已停止运行。</p>
+      <div class="exit-row">
+        <button id="btn-restart">重新开始</button>
+        <button id="btn-close">关闭页面</button>
+      </div>
+      <p class="exit-note">若浏览器阻止自动关闭，请手动关闭标签页。</p>
+    </div>
+  </div>
+  <div id="numpad" hidden>
+    <div class="key" data-key="49">1</div>
+    <div class="key" data-key="50">2</div>
+    <div class="key" data-key="51">3</div>
+    <div class="key" data-key="52">4</div>
+    <div class="key" data-key="53">5</div>
+    <div class="key" data-key="54">6</div>
+    <div class="key" data-key="55">7</div>
+    <div class="key" data-key="56">8</div>
+    <div class="key" data-key="57">9</div>
+    <div class="key" data-key="42">*</div>
+    <div class="key" data-key="48">0</div>
+    <div class="key" data-key="35">#</div>
+  </div>
+</div>
+<script src="assets/classes.js"></script>
+<script src="assets/resources.js"></script>
+<script src="vm/fontdata.js"></script>
+<script src="vm/classfile.js"></script>
+<script src="vm/zlib.js"></script>
+<script src="vm/midi.js"></script>
+<script src="vm/vm.js"></script>
+<script src="vm/natives_core.js"></script>
+<script src="vm/natives_midp.js"></script>
+<script src="app/shell.js"></script>
+</body>
+</html>
