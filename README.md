@@ -93,7 +93,8 @@ gh release create v1.0.0 "钻石狂潮.html" \
   --notes "单文件、双击即玩。游戏素材版权归 Gameloft，仅供个人学习怀旧。"
 ```
 
-没有安装 `gh` 时，也可以在 GitHub 网页端的 Release 页面手动上传该文件。
+没有安装 `gh` 时，也可以在 GitHub 网页端的 Release 页面手动上传该文件（网页上传可保留中文文件名；
+通过 API/`gh` 上传时 GitHub 会把附件名规范为 ASCII，下载后可随意重命名，不影响运行）。
 
 ## 许可证
 
