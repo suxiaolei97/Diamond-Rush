@@ -3987,20 +3987,33 @@ var VM = (function () {
 
   // ---------------- orientation / asset variants ----------------
   // The portrait original and the 320x240 Diamond_CP builds are shipped
-  // side by side; the app boots the one matching the window/device and
-  // offers a manual toggle (page reload, preference persisted).
+  // side by side. The mode cycles auto -> landscape -> portrait -> auto:
+  // "auto" follows the window aspect and reloads on rotation/resize.
   function hasLandscape() {
     return typeof VM_CLASSES_L !== 'undefined' && !!VM_CLASSES_L;
   }
 
+  function orientPref() {
+    try { return localStorage.getItem('dr_orient'); } catch (e) { return null; }
+  }
+
+  function setOrientPref(v) {
+    try {
+      if (v) localStorage.setItem('dr_orient', v);
+      else localStorage.removeItem('dr_orient');
+    } catch (e) { }
+  }
+
+  function autoOrient() {
+    var wide = (typeof window !== 'undefined') && window.innerWidth > window.innerHeight;
+    return (wide && hasLandscape()) ? 'l' : 'p';
+  }
+
   function currentOrient() {
-    var v = null;
-    try { v = localStorage.getItem('dr_orient'); } catch (e) { }
-    if (v !== 'p' && v !== 'l') {
-      var wide = (typeof window !== 'undefined') && window.innerWidth > window.innerHeight;
-      v = (wide && hasLandscape()) ? 'l' : 'p';
-    }
-    return v === 'l' && hasLandscape() ? 'l' : 'p';
+    var p = orientPref();
+    if (p === 'l' && hasLandscape()) return 'l';
+    if (p === 'p') return 'p';
+    return autoOrient();
   }
 
   function setGlobal(name, value) {
@@ -4025,10 +4038,25 @@ var VM = (function () {
     return true;
   }
 
-  function toggleOrient() {
-    var next = currentOrient() === 'l' ? 'p' : 'l';
-    try { localStorage.setItem('dr_orient', next); } catch (e) { }
+  var activeOrient = 'p';
+
+  function cycleOrient() {
+    if (!hasLandscape()) return;
+    var p = orientPref();
+    // auto -> landscape -> portrait -> auto
+    var next = (p === null || p === 'auto') ? 'l' : (p === 'l' ? 'p' : 'auto');
+    setOrientPref(next === 'auto' ? null : next);
     location.reload();
+  }
+
+  var orientSwitchTimer = null;
+  function maybeAutoSwitch() {
+    if (orientPref() === 'l' || orientPref() === 'p') return;
+    if (orientSwitchTimer !== null) clearTimeout(orientSwitchTimer);
+    orientSwitchTimer = setTimeout(function () {
+      orientSwitchTimer = null;
+      if (autoOrient() !== activeOrient) location.reload();
+    }, 400);
   }
 
   // ---------------- screen ----------------
@@ -4252,13 +4280,14 @@ var VM = (function () {
   }
 
   function boot() {
-    applyVariant(currentOrient());
+    activeOrient = currentOrient();
+    applyVariant(activeOrient);
     initScreen();
     initKeyboard();
     initTouchControls();
     updateLayout();
-    window.addEventListener('resize', function () { updateLayout(); render(); });
-    window.addEventListener('orientationchange', function () { setTimeout(function () { updateLayout(); render(); }, 300); });
+    window.addEventListener('resize', function () { updateLayout(); render(); maybeAutoSwitch(); });
+    window.addEventListener('orientationchange', function () { setTimeout(function () { updateLayout(); render(); maybeAutoSwitch(); }, 300); });
     document.getElementById('btn-fit').addEventListener('click', toggleFit);
     document.getElementById('btn-full').addEventListener('click', toggleFullscreen);
     document.getElementById('btn-keypad').addEventListener('click', toggleKeypad);
@@ -4271,11 +4300,11 @@ var VM = (function () {
     }
     var btnOrient = document.getElementById('btn-orient');
     if (btnOrient && hasLandscape()) {
-      var orient = currentOrient();
+      var op = orientPref();
       btnOrient.hidden = false;
-      btnOrient.textContent = orient === 'l' ? '纵' : '横';
-      btnOrient.title = orient === 'l' ? '切换到竖屏原版（240×320）' : '切换到横屏版（320×240）';
-      btnOrient.addEventListener('click', toggleOrient);
+      btnOrient.textContent = op === 'l' ? '横' : (op === 'p' ? '纵' : '自');
+      btnOrient.title = '横竖屏：自动 / 强制横屏 / 强制竖屏（点击切换）';
+      btnOrient.addEventListener('click', cycleOrient);
     }
     var btnRestart = document.getElementById('btn-restart');
     if (btnRestart) btnRestart.addEventListener('click', function () { location.reload(); });

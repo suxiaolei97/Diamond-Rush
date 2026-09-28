@@ -367,6 +367,19 @@
       }
       else if (cmd === 'logrms') { VM.instances.logRms = true; print('[rms] logging on'); }
       else if (cmd === 'rmsdump') { print('RMSDUMP ' + JSON.stringify(__ls)); }
+      else if (cmd === 'worlds') {
+        var icw = VM.getClass('i');
+        var sv = icw.staticFields['i:[B'];
+        var vis = icw.staticFields['b:[Z'];
+        var ab = null;
+        try { ab = VM.getClass('a').staticFields['b:[I']; } catch (e) { }
+        print('[worlds] save2=' + (sv ? sv[2] : 'null') + ' vis=' + (vis ? vis.join(',') : 'null') + ' a.b=' + (ab ? ab.join(',') : 'null'));
+      }
+      else if (cmd === 'setstate') {
+        var sv = parseInt(parts[2], 10) | 0;
+        VM.getClass('i').staticFields['b:B'] = sv;
+        print('[setstate] b=' + VM.getClass('i').staticFields['b:B']);
+      }
       else if (cmd === 'progress') {
         var ic2 = VM.getClass('i');
         var m2 = VM.resolveMethod(ic2, 'a', '(II)B');
@@ -383,13 +396,18 @@
       }
       else if (cmd === 'maxstage') {
         var ic = VM.getClass('i');
-        var m = VM.resolveMethod(ic, 'e', '(I)I');
         var t = VM.instances.uiThread || VM.instances.mainThread;
-        var out = [];
-        for (var ww = 0; ww < 3; ww++) {
-          try { out.push(VM.call(t, m, null, [ww])); } catch (e) { out.push('ERR'); }
+        var names = ['b', 'd', 'e'];
+        var parts = [];
+        for (var ni = 0; ni < names.length; ni++) {
+          var m = VM.resolveMethod(ic, names[ni], '(I)I');
+          var row = [];
+          for (var ww = 0; ww < 3; ww++) {
+            try { row.push(VM.call(t, m, null, [ww])); } catch (e) { row.push('ERR'); }
+          }
+          parts.push(names[ni] + '=' + row.join(','));
         }
-        print('[maxstage] ' + out.join(','));
+        print('[maxstage] ' + parts.join(' '));
       }
       else if (cmd === 'rms') {
         var ks = [];
