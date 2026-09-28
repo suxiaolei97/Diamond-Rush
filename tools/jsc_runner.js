@@ -277,6 +277,42 @@
           } catch (e) { print('[synth] block ' + b + ' ERR ' + e); }
         }
       }
+      else if (cmd === 'audiotest') {
+        function FP() { this.value = 0; }
+        FP.prototype.setValueAtTime = function () { return this; };
+        FP.prototype.linearRampToValueAtTime = function () { return this; };
+        FP.prototype.exponentialRampToValueAtTime = function () { return this; };
+        FP.prototype.cancelScheduledValues = function () { return this; };
+        var astarts = 0, astops = 0;
+        function FN() { this.gain = new FP(); this.frequency = new FP(); this.playbackRate = new FP(); this.Q = new FP(); this.pan = new FP(); this.type = ''; this.buffer = null; this.loop = false; this.loopStart = 0; this.loopEnd = 0; }
+        FN.prototype.connect = function () { };
+        FN.prototype.disconnect = function () { };
+        FN.prototype.start = function () { astarts++; };
+        FN.prototype.stop = function () { astops++; };
+        var actx = {
+          sampleRate: 44100, currentTime: 0, destination: new FN(),
+          createGain: function () { return new FN(); },
+          createOscillator: function () { return new FN(); },
+          createBufferSource: function () { return new FN(); },
+          createBiquadFilter: function () { return new FN(); },
+          createStereoPanner: function () { return new FN(); },
+          createBuffer: function (c, l, r) { return { duration: l / r, sampleRate: r, getChannelData: function () { return new Float32Array(l); } }; }
+        };
+        var aengine = MIDI.createEngine(actx);
+        var araw = VM.base64ToBytes(VM_RESOURCES['snd.f']);
+        function au32(a, o) { return (a[o] & 255) + ((a[o+1] & 255) << 8) + ((a[o+2] & 255) << 16) + ((a[o+3] & 255) * 16777216); }
+        function ablock(b) { var off = au32(araw, 1 + b * 8), len = au32(araw, 5 + b * 8); var bytes = new Uint8Array(len); for (var i = 0; i < len; i++) bytes[i] = araw[1 + araw[0] * 8 + off + i] & 0xFF; return bytes; }
+        var aply = { $data: ablock(19), $volume: 100, $state: 400 };
+        aengine.play(aply, 100);
+        print('[audiotest] play  ' + JSON.stringify(aengine.stats()) + ' start=' + astarts + ' stop=' + astops);
+        pump(30000);
+        print('[audiotest] end   ' + JSON.stringify(aengine.stats()) + ' start=' + astarts + ' stop=' + astops);
+        var stopsAfterEnd = astops;
+        aengine.play(aply, 100);
+        pump(1000);
+        aengine.stop(aply);
+        print('[audiotest] stop  ' + JSON.stringify(aengine.stats()) + ' start=' + astarts + ' stop=' + astops + ' stopDeltaOnEnd=' + stopsAfterEnd);
+      }
       else if (cmd === 'jtest') {
         var canvas = VM.instances.canvas;
         var jo = null;

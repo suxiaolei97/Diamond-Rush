@@ -190,6 +190,8 @@ var MIDI = (function () {
     var active = null;
     var endTimer = null;
     var scheduleTimer = null;
+    var liveNodes = [];
+    var mediaEnds = 0;
 
     // Nokia MobileBAE sample bank (optional; embedded by build_soundfont.py).
     // DR_SOUNDFONT_PREPARED carries PCM decoded off the first touch; attaching
@@ -214,21 +216,24 @@ var MIDI = (function () {
       return noiseBuf;
     }
 
+    function killNodes() {
+      for (var i = 0; i < liveNodes.length; i++) {
+        try { liveNodes[i].stop(0); } catch (e) { }
+        try { liveNodes[i].disconnect(); } catch (e) { }
+      }
+      liveNodes = [];
+    }
+
     function stopActive() {
       if (endTimer !== null) { clearTimeout(endTimer); endTimer = null; }
       if (scheduleTimer !== null) { clearTimeout(scheduleTimer); scheduleTimer = null; }
-      if (active) {
-        var nodes = active.nodes;
-        for (var i = 0; i < nodes.length; i++) {
-          try { nodes[i].stop(0); } catch (e) { }
-          try { nodes[i].disconnect(); } catch (e) { }
-        }
-        active = null;
-      }
+      killNodes();
+      active = null;
     }
 
     function play(player, volume) {
       stopActive();
+      if (ctx.state === 'suspended' && ctx.resume) { try { ctx.resume(); } catch (e) { } }
       lastPlayer = player;
       if (volume !== undefined) lastVolume = volume;
       var data = player.$data;
@@ -237,6 +242,12 @@ var MIDI = (function () {
       try { song = parse(data); } catch (e) { return; }
       var t0 = ctx.currentTime + 0.03;
       var nodes = [];
+      function track() {
+        for (var ti = 0; ti < arguments.length; ti++) {
+          nodes.push(arguments[ti]);
+          liveNodes.push(arguments[ti]);
+        }
+      }
       var volScale = Math.max(0, Math.min(1, (volume === undefined ? 100 : volume) / 100));
 
       var chanProg = new Array(16);
@@ -264,7 +275,7 @@ var MIDI = (function () {
               var dk = ch + ':' + note;
               if (sounding[dk]) releaseVoice(dk, at);
               sounding[dk] = dv;
-              nodes.push(dv.src, dv.gain);
+              track(dv.src, dv.gain);
               return;
             }
           }
@@ -281,7 +292,7 @@ var MIDI = (function () {
             var sk = ch + ':' + note;
             if (sounding[sk]) releaseVoice(sk, at);
             sounding[sk] = sv;
-            nodes.push(sv.src, sv.gain);
+            track(sv.src, sv.gain);
             return;
           }
         }
@@ -318,7 +329,7 @@ var MIDI = (function () {
           pg.connect(g);
           osc.start(at);
           osc.stop(stopAt);
-          nodes.push(osc);
+          track(osc);
           oscs.push({ osc: osc, mult: part[1], baseF: baseF });
         }
         if (spec.noise > 0) {
@@ -338,7 +349,7 @@ var MIDI = (function () {
           ns.connect(nf); nf.connect(ng); ng.connect(master);
           ns.start(at);
           ns.stop(at + (spec.swell ? (spec.ndur || 0.1) + 0.05 : (spec.ndur || 0.05) + 0.02));
-          nodes.push(ns);
+          track(ns);
         }
         var sus = Math.max(0.0001, amp * spec.s);
         g.gain.setValueAtTime(0.0001, at);
@@ -401,7 +412,7 @@ var MIDI = (function () {
           g.gain.exponentialRampToValueAtTime(0.0001, at + d.dur);
           osc.connect(g); g.connect(master);
           osc.start(at); osc.stop(at + d.dur + 0.02);
-          nodes.push(osc);
+          track(osc);
         }
         if (d.noise) {
           var ns = ctx.createBufferSource();
@@ -416,7 +427,7 @@ var MIDI = (function () {
           ns.connect(f); f.connect(ng); ng.connect(master);
           ns.start(at);
           ns.stop(at + d.dur + 0.02);
-          nodes.push(ns);
+          track(ns);
         }
         if (d.kind === 'cowbell') {
           var cb = ctx.createOscillator();
@@ -427,7 +438,7 @@ var MIDI = (function () {
           cg.gain.exponentialRampToValueAtTime(0.0001, at + d.dur);
           cb.connect(cg); cg.connect(master);
           cb.start(at); cb.stop(at + d.dur + 0.02);
-          nodes.push(cb);
+          track(cb);
         }
       }
 
@@ -460,7 +471,9 @@ var MIDI = (function () {
       endTimer = setTimeout(function () {
         endTimer = null;
         if (active && active.nodes === nodes) {
+          killNodes();
           active = null;
+          mediaEnds++;
           if (typeof VM !== 'undefined' && VM.queueMediaEnd) VM.queueMediaEnd(player);
         }
       }, endMs);
@@ -481,9 +494,16 @@ var MIDI = (function () {
       return toneEnabled;
     }
 
+    function stats() {
+      return {
+        tone: toneEnabled, hasTone: !!sf, active: !!active,
+        live: liveNodes.length, ends: mediaEnds, state: ctx.state || '?'
+      };
+    }
+
     return {
       play: play, stop: stop, setVolume: setVolume, context: ctx,
-      setTone: setTone, hasTone: !!sf
+      setTone: setTone, hasTone: !!sf, stats: stats
     };
   }
 

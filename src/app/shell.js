@@ -68,6 +68,14 @@
     applyTone(deferredAudio.engine);
   }
 
+  // iOS often leaves a freshly created AudioContext suspended; retry resume
+  // on every user gesture until it is actually running.
+  function resumeAudio() {
+    var e = deferredAudio.engine;
+    if (!e || !e.context) return;
+    try { if (e.context.state !== 'running' && e.context.resume) e.context.resume(); } catch (err) { }
+  }
+
   var deferredAudio = {
     last: null,
     engine: null,
@@ -78,6 +86,8 @@
       if (this.engine) return;
       this.engine = MIDI.unlockAudio();
       if (this.engine) {
+        setTimeout(resumeAudio, 100);
+        setTimeout(resumeAudio, 500);
         applyTone(this.engine);
         VM.instances.audio = this.engine;
         if (this.last && this.last.$state === 400) {
@@ -201,9 +211,18 @@
     setInterval(function () {
       var now = Date.now();
       var fps = perfFrames * 1000 / Math.max(1, now - perfLast);
+      var aud = '';
+      try {
+        var eng = deferredAudio.engine;
+        if (eng && eng.stats) {
+          var st = eng.stats();
+          aud = '\naudio ' + (st.hasTone ? (st.tone ? 'SF' : 'SYN') : 'SYN(no bank)') +
+            ' ' + st.state + ' live=' + st.live + ' ends=' + st.ends;
+        }
+      } catch (err) { }
       perfEl.textContent = 'fps ' + fps.toFixed(0) +
         '\ntick ' + (VM.perf ? VM.perf.tickMs.toFixed(1) : '-') + 'ms' +
-        '\nrender ' + perfRenderMs.toFixed(1) + 'ms';
+        '\nrender ' + perfRenderMs.toFixed(1) + 'ms' + aud;
       perfFrames = 0;
       perfRenderMs = 0;
       perfLast = now;
@@ -475,6 +494,10 @@
       btnLang.addEventListener('click', cycleLocale);
     }
     document.addEventListener('touchstart', function () { deferredAudio.unlock(); }, { once: true });
+    document.addEventListener('pointerdown', resumeAudio, true);
+    document.addEventListener('touchstart', resumeAudio, true);
+    document.addEventListener('keydown', resumeAudio, true);
+    document.addEventListener('click', resumeAudio, true);
 
     VM.instances.onDestroyed = onDestroyed;
 
