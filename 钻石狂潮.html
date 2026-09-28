@@ -658,6 +658,19 @@ var SoundFont = (function () {
     return out;
   }
 
+  // Double the sample count while keeping duration/pitch (linear interpolation).
+  // Some browsers reject AudioBuffers below 8 kHz (the bank has one 6.3 kHz wave).
+  function upsample2(x) {
+    var n = x.length;
+    var out = new Float32Array(n * 2);
+    for (var i = 0; i < n; i++) {
+      var a = x[i];
+      out[2 * i] = a;
+      out[2 * i + 1] = i + 1 < n ? (a + x[i + 1]) / 2 : a;
+    }
+    return out;
+  }
+
   // ------------------------------------------------------------------
   // Envelope / loop policy per GM family
   // ------------------------------------------------------------------
@@ -699,6 +712,7 @@ var SoundFont = (function () {
       var raw = decodePCM(b64, bytes);
       var pcm = toFloat(raw, bytes);
       var rate = data.waves.rate[i];
+      while (rate < 8000) { pcm = upsample2(pcm); rate *= 2; }
       var buf = ctx.createBuffer(1, pcm.length, rate);
       var ch = buf.getChannelData(0);
       if (ch.set) { ch.set(pcm); } else { for (var j = 0; j < pcm.length; j++) ch[j] = pcm[j]; }
