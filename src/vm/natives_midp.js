@@ -661,6 +661,7 @@
     }, true);
     N(RecordStore_, 'addRecord', '([BII)I', function (VM, self, a) {
       var data = a[0], off = a[1] | 0, len = a[2] | 0;
+      if (VM.instances.logRms) print('[rs] addRecord ' + str(self.$name) + ' data=' + (data ? 'arr[' + data.length + ']' : String(data)) + ' off=' + off + ' len=' + len);
       var rec = new Array(len);
       for (var i = 0; i < len; i++) rec[i] = (data[off + i] << 24) >> 24;
       rec.$atype = 8;
@@ -685,7 +686,12 @@
       rmsSave(str(self.$name), self.$records);
     });
     N(RecordStore_, 'getNumRecords', '()I', function (VM, self, a) { return self.$records.length; });
-    N(RecordStore_, 'closeRecordStore', '()V', function (VM, self, a) { rmsSave(str(self.$name), self.$records); });
+    N(RecordStore_, 'closeRecordStore', '()V', function (VM, self, a) {
+      if (self.$closed) throw new VM.JThrowable(VM.makeException('java/lang/Exception', 'RecordStore already closed: ' + str(self.$name)));
+      self.$closed = true;
+      if (VM.instances.logRms) print('[rs] close ' + str(self.$name) + ' records=' + self.$records.length);
+      rmsSave(str(self.$name), self.$records);
+    });
     N(RecordStore_, 'getRecordSize', '(I)I', function (VM, self, a) {
       var rec = self.$records[(a[0] | 0) - 1];
       if (rec === undefined) throw new VM.JThrowable(VM.makeException('java/lang/Exception', 'RecordStore.getRecordSize'));

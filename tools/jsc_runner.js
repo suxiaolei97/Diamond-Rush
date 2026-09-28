@@ -11,8 +11,9 @@
   };
   if (typeof globalThis !== 'undefined') globalThis.console = console;
 
-  // in-memory localStorage shim (jsc has none)
+  // in-memory localStorage shim (jsc has none); optional preload for reload tests
   var __ls = {};
+  try { var __pre = readFile('harness/rms.json'); if (__pre) __ls = JSON.parse(__pre); } catch (e) { }
   var localStorageShim = {
     getItem: function (k) { return __ls[k] === undefined ? null : __ls[k]; },
     setItem: function (k, v) { __ls[k] = String(v); },
@@ -363,6 +364,37 @@
           var img = VM.midp.decodePng(raw, 1 + cnt * 8 + off, len);
           print('[pngtest] block ' + b + ' off=' + off + ' len=' + len + ' -> ' + (img ? (img.$w + 'x' + img.$h) : 'null'));
         }
+      }
+      else if (cmd === 'logrms') { VM.instances.logRms = true; print('[rms] logging on'); }
+      else if (cmd === 'rmsdump') { print('RMSDUMP ' + JSON.stringify(__ls)); }
+      else if (cmd === 'progress') {
+        var ic2 = VM.getClass('i');
+        var m2 = VM.resolveMethod(ic2, 'a', '(II)B');
+        var t2 = VM.instances.uiThread || VM.instances.mainThread;
+        var res = [];
+        for (var w2 = 0; w2 < 3; w2++) {
+          var row = [];
+          for (var s2 = 0; s2 < 12; s2++) {
+            try { row.push(VM.call(t2, m2, null, [w2, s2]) | 0); } catch (e) { row.push(-1); }
+          }
+          res.push(w2 + ':' + row.join(''));
+        }
+        print('[progress] ' + res.join(' '));
+      }
+      else if (cmd === 'maxstage') {
+        var ic = VM.getClass('i');
+        var m = VM.resolveMethod(ic, 'e', '(I)I');
+        var t = VM.instances.uiThread || VM.instances.mainThread;
+        var out = [];
+        for (var ww = 0; ww < 3; ww++) {
+          try { out.push(VM.call(t, m, null, [ww])); } catch (e) { out.push('ERR'); }
+        }
+        print('[maxstage] ' + out.join(','));
+      }
+      else if (cmd === 'rms') {
+        var ks = [];
+        for (var kk in __ls) { var vv = String(__ls[kk]); ks.push(kk + '=' + (vv.length > 60 ? vv.slice(0, 60) + '...' : vv)); }
+        print('[rms] ' + (ks.length ? ks.join(' ') : '(empty)'));
       }
       else if (cmd === 'log') {
         var ic = VM.getClass('i');

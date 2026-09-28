@@ -224,6 +224,17 @@
     KeyR: 35, NumpadDivide: 35
   };
 
+  // Shift+3 / Shift+8 produce '#' and '*' which have their own J2ME key codes.
+  function keyCodeFor(e) {
+    if (e.key && e.key.length === 1) {
+      var ch = e.key;
+      if (ch >= '0' && ch <= '9') return 48 + (ch.charCodeAt(0) - 48);
+      if (ch === '#') return 35;
+      if (ch === '*') return 42;
+    }
+    return KEYMAP[e.code];
+  }
+
   function initKeyboard() {
     document.addEventListener('keydown', function (e) {
       if (e.code === 'Escape') {
@@ -236,16 +247,16 @@
         e.preventDefault();
         return;
       }
-      var code = KEYMAP[e.code];
+      var code = keyCodeFor(e);
       if (code !== undefined && !pressed[e.code]) {
-        pressed[e.code] = true;
+        pressed[e.code] = code;
         VM.inputKey(code, true);
         e.preventDefault();
       }
     });
     document.addEventListener('keyup', function (e) {
-      var code = KEYMAP[e.code];
-      if (code !== undefined && pressed[e.code]) {
+      var code = pressed[e.code];
+      if (code !== undefined) {
         pressed[e.code] = false;
         VM.inputKey(code, false);
         e.preventDefault();
