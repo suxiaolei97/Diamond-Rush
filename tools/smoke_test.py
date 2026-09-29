@@ -132,9 +132,11 @@ def main():
     print('found', len(scripts), 'inline scripts')
     touch = os.environ.get('SMOKE_TOUCH', '0') == '1'
     orient = os.environ.get('SMOKE_ORIENT', '')
+    perf = os.environ.get('SMOKE_PERF', '') == '1'
     with open(OUT, 'w', encoding='utf-8') as f:
         f.write('var $ENV_TOUCH = %s;\n' % ('true' if touch else 'false'))
         f.write('var $ENV_ORIENT = %s;\n' % (repr(orient) if orient else 'null'))
+        f.write('var location = { search: "", hash: %s };\n' % ('"#perf=1"' if perf else '""'))
         f.write(STUBS)
         for s in scripts:
             f.write('\n;\n')

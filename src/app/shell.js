@@ -224,17 +224,19 @@
       try {
         var ic = VM.getClass('i');
         var cv = VM.instances.canvas;
-        if (cv) {
+        var sv = ic && ic.staticFields['i:[B'];
+        if (cv && sv) {
           function hf(name, desc) { for (var fi = 0; fi < ic.fields.length; fi++) { var fd = ic.fields[fi]; if (!fd.static && fd.name === name && fd.desc === desc) return fd.key; } return null; }
           var wa = cv.$f[hf('aA', 'I')] | 0, ws = cv.$f[hf('aB', 'I')] | 0;
-          var tt = VM.instances.uiThread || VM.instances.mainThread;
-          var gm = VM.resolveMethod(ic, 'b', '(II)I');
-          var gt = VM.resolveMethod(ic, 'c', '(II)I');
-          var got = VM.call(tt, gm, cv, [wa, ws]) | 0;
-          var tot = VM.call(tt, gt, cv, [wa, ws]) | 0;
-          var sv = ic.staticFields['i:[B'];
-          var bank = sv ? (sv[6] & 0xff) | ((sv[7] & 0xff) << 8) : -1;
-          mapInfo = '\nmap w' + wa + 's' + ws + ' ' + got + '/' + tot + ' bank=' + bank;
+          // same layout the game uses: world base u16 at 14+2*w, stage record
+          // pointer u16 at base+3+2*s, collected/total bytes at the pointer
+          var u16 = function (o) { return (sv[o] & 0xff) | ((sv[o + 1] & 0xff) << 8); };
+          var base = u16(14 + wa * 2);
+          var ptr = base + 3 + ws * 2;
+          var rp = (ptr + 1 < sv.length) ? u16(ptr) : 0;
+          var got = (rp + 1 < sv.length) ? (sv[rp] & 0xff) : -1;
+          var tot = (rp + 1 < sv.length) ? (sv[rp + 1] & 0xff) : -1;
+          mapInfo = '\nmap w' + wa + 's' + ws + ' ' + got + '/' + tot + ' bank=' + u16(6);
         }
       } catch (err) { }
       perfEl.textContent = 'fps ' + fps.toFixed(0) +
