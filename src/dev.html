@@ -47,7 +47,11 @@
   #hud {
     position: absolute; top: calc(8px + var(--safe-top)); right: calc(8px + var(--safe-right));
     display: flex; gap: 8px; z-index: 20;
+    flex-direction: row-reverse; align-items: flex-start;
   }
+  #hud-panel { display: flex; gap: 8px; }
+  #hud-panel[hidden] { display: none; }
+  #btn-menu.active { border-color: var(--accent); color: var(--accent); }
   #hud button {
     width: 36px; height: 36px; border-radius: 8px; border: 1px solid #555;
     background: rgba(30,30,36,.8); color: #ddd; font-size: 16px; cursor: pointer;
@@ -155,13 +159,16 @@
   <div id="stage">
     <canvas id="screen"></canvas>
     <div id="hud">
-      <button id="btn-fit" title="缩放模式">⤢</button>
-      <button id="btn-full" title="全屏">⛶</button>
-      <button id="btn-keypad" title="数字键盘">#</button>
-      <button id="btn-lang" title="语言">简</button>
-      <button id="btn-orient" title="切换横竖屏版本" hidden>横</button>
-      <button id="btn-pad" title="虚拟按键">🎮</button>
-      <button id="btn-tone" title="音色：诺基亚原机采样 / 内置合成器" hidden>SF</button>
+      <button id="btn-menu" title="显示 / 隐藏功能按钮">☰</button>
+      <div id="hud-panel">
+        <button id="btn-fit" title="缩放模式">⤢</button>
+        <button id="btn-full" title="全屏">⛶</button>
+        <button id="btn-keypad" title="数字键盘">#</button>
+        <button id="btn-lang" title="语言">简</button>
+        <button id="btn-orient" title="切换横竖屏版本" hidden>横</button>
+        <button id="btn-pad" title="虚拟按键">🎮</button>
+        <button id="btn-tone" title="音色：诺基亚原机采样 / 内置合成器" hidden>SF</button>
+      </div>
     </div>
     <div id="hint">方向键移动 · 空格/回车 攻击确认 · Q/W 左右软键 · 数字键秘籍 · F 全屏 · Esc 数字面板</div>
   </div>

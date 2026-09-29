@@ -678,6 +678,7 @@
     });
     N(RecordStore_, 'setRecord', '(I[BII)V', function (VM, self, a) {
       var id = a[0] | 0, data = a[1], off = a[2] | 0, len = a[3] | 0;
+      if (VM.instances.logRms) print('[rs] setRecord ' + str(self.$name) + ' id=' + id + ' len=' + len + ' b0=' + (data && data[0] | 0) + ' b6=' + (data && data[6] | 0));
       if (self.$records[id - 1] === undefined) self.$records[id - 1] = [];
       var rec = new Array(len);
       for (var i = 0; i < len; i++) rec[i] = (data[off + i] << 24) >> 24;

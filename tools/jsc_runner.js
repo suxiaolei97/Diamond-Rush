@@ -430,6 +430,83 @@
         }
         print('[progress] ' + res.join(' '));
       }
+      else if (cmd === 'stepexit') {
+        var icx = VM.getClass('i');
+        var cvx = VM.instances.canvas;
+        var tm = icx.staticFields['a:[[I'];
+        function fkx(name, desc) { for (var fi = 0; fi < icx.fields.length; fi++) { var fd = icx.fields[fi]; if (!fd.static && fd.name === name && fd.desc === desc) return fd.key; } return null; }
+        function gx(name, desc) { return cvx.$f[fkx(name, desc)] | 0; }
+        var px = gx('h', 'I'), py = gx('i', 'I');
+        var ttype = parseInt(parts[2] || '5', 10);
+        print('[stepexit] player at ' + px + ',' + py + ' rows=' + (tm ? tm.length : 'null'));
+        if (tm && tm[py] && tm[py][px + 1] !== undefined) {
+          print('[stepexit] old tile right = ' + (tm[py][px + 1] & 255));
+          tm[py][px + 1] = (tm[py][px + 1] & -256) | ttype;
+          print('[stepexit] set tile right = ' + ttype);
+        }
+        VM.inputKey(-4, true);
+        for (var si = 0; si < 12; si++) {
+          pump(150);
+          var savex = icx.staticFields['i:[B'];
+          var bankx = savex ? (savex[6] & 0xff) | ((savex[7] & 0xff) << 8) : -1;
+          print('[stepexit] t=' + ((si + 1) * 150) + ' state=' + icx.staticFields['b:B'] + ' x=' + gx('x', 'Z') + ' at=' + gx('at', 'Z') + ' h=' + gx('h', 'I') + ' bb=' + gx('bb', 'I') + ' bank=' + bankx);
+        }
+        VM.inputKey(-4, false);
+      }
+      else if (cmd === 'lootcheck') {
+        var icc = VM.getClass('i');
+        var cvc = VM.instances.canvas;
+        function fkc(name, desc) { for (var fi = 0; fi < icc.fields.length; fi++) { var fd = icc.fields[fi]; if (!fd.static && fd.name === name && fd.desc === desc) return fd.key; } return null; }
+        var save = icc.staticFields['i:[B'];
+        var bank = save ? (save[6] & 0xff) | ((save[7] & 0xff) << 8) : -1;
+        var stage = -1;
+        try {
+          var tt = VM.instances.uiThread || VM.instances.mainThread;
+          var mt = VM.resolveMethod(icc, 'b', '(II)I');
+          stage = VM.call(tt, mt, cvc, [0, cvc.$f[fkc('aB', 'I')] | 0]);
+        } catch (e) { stage = 'ERR'; }
+        print('[lootcheck] aA=' + (cvc.$f[fkc('aA', 'I')] | 0) + ' aB=' + (cvc.$f[fkc('aB', 'I')] | 0) + ' bank=' + bank + ' stage=' + stage);
+      }
+      else if (cmd === 'loottrace') {
+        var ict = VM.getClass('i');
+        var cv = VM.instances.canvas;
+        if (!cv) { print('[loot] no canvas'); }
+        else {
+          function fkt(name, desc) {
+            for (var fi = 0; fi < ict.fields.length; fi++) {
+              var fd = ict.fields[fi];
+              if (!fd.static && fd.name === name && fd.desc === desc) return fd.key;
+            }
+            return null;
+          }
+          function setF(name, desc, val) { var k = fkt(name, desc); if (k) cv.$f[k] = val; else print('[loot] missing field ' + name + desc); }
+          function getF(name, desc) { var k = fkt(name, desc); return k ? (cv.$f[k] | 0) : -1; }
+          function stat() {
+            var save = ict.staticFields['i:[B'];
+            var bank = save ? (save[6] & 0xff) | ((save[7] & 0xff) << 8) : -1;
+            var stage = -1;
+            try {
+              var tt = VM.instances.uiThread || VM.instances.mainThread;
+              var mt = VM.resolveMethod(ict, 'b', '(II)I');
+              var mtc = VM.resolveMethod(ict, 'c', '(II)I');
+              var stg = getF('aB', 'I');
+              stage = VM.call(tt, mt, cv, [0, stg]) + '/' + VM.call(tt, mtc, cv, [0, stg]);
+            } catch (e) { stage = 'ERR'; }
+            return 'state=' + ict.staticFields['b:B'] + ' bs=' + getF('bs', 'I') + ' bb=' + getF('bb', 'I') + ' bank=' + bank + ' stage=' + stage;
+          }
+          var lmode = parts[2] || 'secret';
+          setF('at', 'Z', lmode === 'secret' ? 1 : 0);
+          setF('bb', 'I', 7);
+          print('[loot] ' + lmode + ' before ' + stat());
+          for (var li = 0; li < 30; li++) {
+            setF('x', 'Z', 1);
+            setF('h', 'I', -10);
+            pump(100);
+            if (li % 5 === 4) print('[loot] ' + lmode + ' t=' + ((li + 1) * 100) + ' ' + stat());
+          }
+          print('[loot] ' + lmode + ' after ' + stat());
+        }
+      }
       else if (cmd === 'maxstage') {
         var ic = VM.getClass('i');
         var t = VM.instances.uiThread || VM.instances.mainThread;

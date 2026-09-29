@@ -220,9 +220,26 @@
             ' ' + st.state + ' live=' + st.live + ' ends=' + st.ends;
         }
       } catch (err) { }
+      var mapInfo = '';
+      try {
+        var ic = VM.getClass('i');
+        var cv = VM.instances.canvas;
+        if (cv) {
+          function hf(name, desc) { for (var fi = 0; fi < ic.fields.length; fi++) { var fd = ic.fields[fi]; if (!fd.static && fd.name === name && fd.desc === desc) return fd.key; } return null; }
+          var wa = cv.$f[hf('aA', 'I')] | 0, ws = cv.$f[hf('aB', 'I')] | 0;
+          var tt = VM.instances.uiThread || VM.instances.mainThread;
+          var gm = VM.resolveMethod(ic, 'b', '(II)I');
+          var gt = VM.resolveMethod(ic, 'c', '(II)I');
+          var got = VM.call(tt, gm, cv, [wa, ws]) | 0;
+          var tot = VM.call(tt, gt, cv, [wa, ws]) | 0;
+          var sv = ic.staticFields['i:[B'];
+          var bank = sv ? (sv[6] & 0xff) | ((sv[7] & 0xff) << 8) : -1;
+          mapInfo = '\nmap w' + wa + 's' + ws + ' ' + got + '/' + tot + ' bank=' + bank;
+        }
+      } catch (err) { }
       perfEl.textContent = 'fps ' + fps.toFixed(0) +
         '\ntick ' + (VM.perf ? VM.perf.tickMs.toFixed(1) : '-') + 'ms' +
-        '\nrender ' + perfRenderMs.toFixed(1) + 'ms' + aud;
+        '\nrender ' + perfRenderMs.toFixed(1) + 'ms' + aud + mapInfo;
       perfFrames = 0;
       perfRenderMs = 0;
       perfLast = now;
@@ -469,6 +486,21 @@
     document.getElementById('btn-fit').addEventListener('click', toggleFit);
     document.getElementById('btn-full').addEventListener('click', toggleFullscreen);
     document.getElementById('btn-keypad').addEventListener('click', toggleKeypad);
+    // HUD collapse: one button reveals/hides the rest (hidden by default on touch)
+    var hudPanel = document.getElementById('hud-panel');
+    var btnMenu = document.getElementById('btn-menu');
+    var hudOpen = false;
+    try { hudOpen = (localStorage.getItem('dr_hud') === '1') || (localStorage.getItem('dr_hud') === null && !isTouchDevice); } catch (e) { }
+    function updateHud() {
+      if (hudPanel) hudPanel.hidden = !hudOpen;
+      if (btnMenu) btnMenu.classList.toggle('active', hudOpen);
+    }
+    if (btnMenu) btnMenu.addEventListener('click', function () {
+      hudOpen = !hudOpen;
+      try { localStorage.setItem('dr_hud', hudOpen ? '1' : '0'); } catch (e) { }
+      updateHud();
+    });
+    updateHud();
     var btnPad = document.getElementById('btn-pad');
     if (btnPad) btnPad.addEventListener('click', togglePad);
     var btnTone = document.getElementById('btn-tone');
