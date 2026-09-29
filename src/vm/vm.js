@@ -329,6 +329,14 @@ var VM = (function () {
   var schedulerTimer = null;
   var schedulerIsRaf = false;
   var schedulerDelay = false;
+  var schedulerBackup = null;
+
+  function clearSchedulerBackup() {
+    if (schedulerBackup !== null && typeof clearTimeout !== 'undefined') {
+      clearTimeout(schedulerBackup);
+      schedulerBackup = null;
+    }
+  }
   var rafFn = (typeof requestAnimationFrame === 'function') ? requestAnimationFrame : null;
   var cafFn = (typeof cancelAnimationFrame === 'function') ? cancelAnimationFrame : null;
 
@@ -470,7 +478,23 @@ var VM = (function () {
     schedulerDelay = false;
     if (rafFn && !(typeof document !== 'undefined' && document.hidden)) {
       schedulerIsRaf = true;
-      schedulerTimer = rafFn(function () { schedulerTimer = null; tick(); });
+      var rafId = rafFn(function () {
+        if (schedulerTimer === rafId) schedulerTimer = null;
+        clearSchedulerBackup();
+        tick();
+      });
+      schedulerTimer = rafId;
+      // Watchdog: rAF can stall (iOS quirks, throttling); keep the VM moving.
+      if (typeof setTimeout !== 'undefined') {
+        schedulerBackup = setTimeout(function () {
+          schedulerBackup = null;
+          if (schedulerTimer === rafId) {
+            if (cafFn) { try { cafFn(rafId); } catch (e) { } }
+            schedulerTimer = null;
+            tick();
+          }
+        }, 250);
+      }
       return;
     }
     if (typeof setTimeout === 'undefined') return;
@@ -480,6 +504,7 @@ var VM = (function () {
 
   function tick() {
     schedulerTimer = null;
+    clearSchedulerBackup();
     if (vm.halt) return;
     var tickStart = Date.now();
     var now = tickStart;
@@ -1236,6 +1261,7 @@ var VM = (function () {
     queueMediaEnd: queueMediaEnd,
     shutdown: function (reason) {
       vm.halt = true;
+      clearSchedulerBackup();
       if (schedulerTimer !== null) {
         if (schedulerIsRaf && cafFn) cafFn(schedulerTimer);
         else if (typeof clearTimeout !== 'undefined') clearTimeout(schedulerTimer);

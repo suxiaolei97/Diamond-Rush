@@ -92,6 +92,8 @@ Date.UTC = RealDate.UTC;
 Date.parse = RealDate.parse;
 setTimeout = function(fn, ms){ __timers.push({ at: __now + (ms||0), fn: fn }); return __tid++; };
 clearTimeout = function(id){ for (var i = 0; i < __timers.length; i++) if (__timers[i].id === id) { __timers.splice(i, 1); return; } };
+setInterval = function(fn, ms){ var id = __tid++; (function rep(){ __timers.push({ id: id, at: __now + (ms||0), fn: function(){ fn(); rep(); } }); })(); return id; };
+clearInterval = clearTimeout;
 function __pump(ms) {
   var target = __now + ms, guard = 0;
   for (;;) {

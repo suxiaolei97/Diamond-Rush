@@ -1752,6 +1752,14 @@ var VM = (function () {
   var schedulerTimer = null;
   var schedulerIsRaf = false;
   var schedulerDelay = false;
+  var schedulerBackup = null;
+
+  function clearSchedulerBackup() {
+    if (schedulerBackup !== null && typeof clearTimeout !== 'undefined') {
+      clearTimeout(schedulerBackup);
+      schedulerBackup = null;
+    }
+  }
   var rafFn = (typeof requestAnimationFrame === 'function') ? requestAnimationFrame : null;
   var cafFn = (typeof cancelAnimationFrame === 'function') ? cancelAnimationFrame : null;
 
@@ -1893,7 +1901,23 @@ var VM = (function () {
     schedulerDelay = false;
     if (rafFn && !(typeof document !== 'undefined' && document.hidden)) {
       schedulerIsRaf = true;
-      schedulerTimer = rafFn(function () { schedulerTimer = null; tick(); });
+      var rafId = rafFn(function () {
+        if (schedulerTimer === rafId) schedulerTimer = null;
+        clearSchedulerBackup();
+        tick();
+      });
+      schedulerTimer = rafId;
+      // Watchdog: rAF can stall (iOS quirks, throttling); keep the VM moving.
+      if (typeof setTimeout !== 'undefined') {
+        schedulerBackup = setTimeout(function () {
+          schedulerBackup = null;
+          if (schedulerTimer === rafId) {
+            if (cafFn) { try { cafFn(rafId); } catch (e) { } }
+            schedulerTimer = null;
+            tick();
+          }
+        }, 250);
+      }
       return;
     }
     if (typeof setTimeout === 'undefined') return;
@@ -1903,6 +1927,7 @@ var VM = (function () {
 
   function tick() {
     schedulerTimer = null;
+    clearSchedulerBackup();
     if (vm.halt) return;
     var tickStart = Date.now();
     var now = tickStart;
@@ -2659,6 +2684,7 @@ var VM = (function () {
     queueMediaEnd: queueMediaEnd,
     shutdown: function (reason) {
       vm.halt = true;
+      clearSchedulerBackup();
       if (schedulerTimer !== null) {
         if (schedulerIsRaf && cafFn) cafFn(schedulerTimer);
         else if (typeof clearTimeout !== 'undefined') clearTimeout(schedulerTimer);
@@ -4620,6 +4646,38 @@ var VM = (function () {
       if (typeof console !== 'undefined') console.error(e);
       return;
     }
+    // Stall detector: if the game state stops changing for 20s, show what the
+    // VM is doing and offer to wipe the save.
+    var lastGameState = -1, lastGameStateAt = Date.now(), stallShown = false;
+    var setIntervalFn = (typeof setInterval === 'function') ? setInterval : null;
+    if (setIntervalFn) setIntervalFn(function () {
+      try {
+        var ic = VM.getClass('i');
+        if (!ic || !ic.staticFields) return;
+        var st = ic.staticFields['b:B'] | 0;
+        if (st !== lastGameState) { lastGameState = st; lastGameStateAt = Date.now(); stallShown = false; return; }
+        if (stallShown || Date.now() - lastGameStateAt < 20000) return;
+        stallShown = true;
+        var aS = ic.staticFields['aS:I'] | 0;
+        var banner = document.createElement('div');
+        banner.style.cssText = 'position:fixed;left:8px;right:8px;bottom:calc(8px + var(--safe-bottom,0px));z-index:80;background:rgba(20,20,24,.95);border:1px solid #555;border-radius:10px;padding:10px 12px;color:#ddd;font-size:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap';
+        var txt = document.createElement('span');
+        txt.textContent = '似乎卡住了：state=' + st + ' aS=' + aS + ' tick=' + (VM.perf ? VM.perf.tickMs.toFixed(1) : '-') + 'ms';
+        var b1 = document.createElement('button');
+        b1.textContent = '清空存档并重载';
+        b1.style.cssText = 'padding:6px 10px;border-radius:6px;border:1px solid #666;background:#2c2d35;color:#eee';
+        b1.addEventListener('click', function () { clearSavedGame(); location.reload(); });
+        var b2 = document.createElement('button');
+        b2.textContent = '知道了';
+        b2.style.cssText = 'padding:6px 10px;border-radius:6px;border:1px solid #666;background:#2c2d35;color:#eee';
+        b2.addEventListener('click', function () { if (banner.parentNode) banner.parentNode.removeChild(banner); });
+        banner.appendChild(txt);
+        banner.appendChild(b1);
+        banner.appendChild(b2);
+        document.body.appendChild(banner);
+      } catch (e) { }
+    }, 3000);
+
     // Decode the Nokia sample bank off the first touch: PCM conversion needs no
     // AudioContext, so only buffer creation is left for the unlock callback.
     if (typeof SoundFont !== 'undefined' && typeof SoundFont.prepare === 'function') {
