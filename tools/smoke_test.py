@@ -27,7 +27,8 @@ function makeEl(id) {
     setAttribute: function(){},
     addEventListener: function(){},
     removeEventListener: function(){},
-    appendChild: function(){},
+    appendChild: function(c){ if (!el._children) el._children = []; el._children.push(c); return c; },
+    removeChild: function(c){ if (el._children) { var i = el._children.indexOf(c); if (i >= 0) el._children.splice(i, 1); } },
     getContext: function(){
       var noop = function(){};
       return {
@@ -123,6 +124,13 @@ TAIL = r'''
   var nonzero = 0;
   for (var i = 0; i < px.length; i += 97) if (px[i] !== 0 && px[i] !== -16777216) nonzero++;
   print('[smoke] screen non-black samples=' + nonzero);
+  try {
+    var kids = document.body._children || [];
+    for (var i = 0; i < kids.length; i++) {
+      var tx = kids[i] && kids[i].textContent;
+      if (tx && String(tx).indexOf('fps') >= 0) print('[smoke] perf panel: ' + String(tx).replace(/\n/g, ' | '));
+    }
+  } catch (e) { }
 })();
 '''
 
