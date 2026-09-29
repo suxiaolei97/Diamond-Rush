@@ -590,6 +590,7 @@
     // Stall detector: if the game state stops changing for 20s, show what the
     // VM is doing and offer to wipe the save.
     var lastGameState = -1, lastGameStateAt = Date.now(), stallShown = false;
+    var STALL_WATCH = [0, 5, 6, 8, 9, 15, 16];
     var setIntervalFn = (typeof setInterval === 'function') ? setInterval : null;
     if (setIntervalFn) setIntervalFn(function () {
       try {
@@ -597,6 +598,8 @@
         if (!ic || !ic.staticFields) return;
         var st = ic.staticFields['b:B'] | 0;
         if (st !== lastGameState) { lastGameState = st; lastGameStateAt = Date.now(); stallShown = false; return; }
+        // only auto-advancing screens are expected to move on their own
+        if (STALL_WATCH.indexOf(st) < 0) { lastGameStateAt = Date.now(); return; }
         if (stallShown || Date.now() - lastGameStateAt < 20000) return;
         stallShown = true;
         var aS = ic.staticFields['aS:I'] | 0;
