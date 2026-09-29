@@ -313,6 +313,28 @@
         aengine.stop(aply);
         print('[audiotest] stop  ' + JSON.stringify(aengine.stats()) + ' start=' + astarts + ' stop=' + astops + ' stopDeltaOnEnd=' + stopsAfterEnd);
       }
+      else if (cmd === 'cptest') {
+        var icc = VM.getClass('i');
+        var cvc = VM.instances.canvas;
+        function fkc(name, desc) { for (var fi = 0; fi < icc.fields.length; fi++) { var fd = icc.fields[fi]; if (!fd.static && fd.name === name && fd.desc === desc) return fd.key; } return null; }
+        function setc(name, desc, v) { cvc.$f[fkc(name, desc)] = v; }
+        function getc(name, desc) { return cvc.$f[fkc(name, desc)] | 0; }
+        var mbc = VM.resolveMethod(icc, 'b', '(II)I');
+        var tc = VM.instances.uiThread || VM.instances.mainThread;
+        function sOf(st) { try { return VM.call(tc, mbc, cvc, [0, st]); } catch (e) { return 'ERR'; } }
+        var w = parseInt(parts[2] || '0', 10), stg = parseInt(parts[3] || '6', 10), bbv = parseInt(parts[4] || '2', 10);
+        setc('aA', 'I', w); setc('aB', 'I', stg); setc('bb', 'I', bbv); setc('bs', 'I', 0);
+        var svc = icc.staticFields['i:[B'];
+        var bankB = svc ? (svc[6] & 0xff) | ((svc[7] & 0xff) << 8) : -1;
+        print('[cptest] before w' + w + 's' + stg + '=' + sOf(stg) + ' s' + (stg+1) + '=' + sOf(stg+1) + ' bank=' + bankB + ' bs=' + getc('bs', 'I'));
+        icc.staticFields['b:B'] = 35;
+        for (var ci = 0; ci < 40; ci++) {
+          pump(100);
+          if (ci % 4 === 3) print('[cptest] t=' + ((ci+1)*100) + ' state=' + icc.staticFields['b:B'] + ' bs=' + getc('bs', 'I') + ' w' + w + 's' + stg + '=' + sOf(stg) + ' s' + (stg+1) + '=' + sOf(stg+1) + ' bank=' + (svc ? (svc[6] & 0xff) | ((svc[7] & 0xff) << 8) : -1));
+          if ((icc.staticFields['b:B'] | 0) !== 35 && ci > 4) break;
+        }
+        print('[cptest] after w' + w + 's' + stg + '=' + sOf(stg) + ' s' + (stg+1) + '=' + sOf(stg+1) + ' state=' + icc.staticFields['b:B']);
+      }
       else if (cmd === 'jtest11') {
         var icj = VM.getClass('i');
         var cvj = VM.instances.canvas;
@@ -511,13 +533,16 @@
               var mt = VM.resolveMethod(ict, 'b', '(II)I');
               var mtc = VM.resolveMethod(ict, 'c', '(II)I');
               var stg = getF('aB', 'I');
-              stage = VM.call(tt, mt, cv, [0, stg]) + '/' + VM.call(tt, mtc, cv, [0, stg]);
+              stage = VM.call(tt, mt, cv, [0, stg]) + '/' + VM.call(tt, mtc, cv, [0, stg]) +
+                ' s6=' + VM.call(tt, mt, cv, [0, 6]) + ' s7=' + VM.call(tt, mt, cv, [0, 7]);
             } catch (e) { stage = 'ERR'; }
             return 'state=' + ict.staticFields['b:B'] + ' bs=' + getF('bs', 'I') + ' bb=' + getF('bb', 'I') + ' bank=' + bank + ' stage=' + stage;
           }
           var lmode = parts[2] || 'secret';
+          if (parts[3] !== undefined) setF('aA', 'I', parseInt(parts[3], 10) | 0);
+          if (parts[4] !== undefined) setF('aB', 'I', parseInt(parts[4], 10) | 0);
           setF('at', 'Z', lmode === 'secret' ? 1 : 0);
-          setF('bb', 'I', 7);
+          setF('bb', 'I', 2);
           print('[loot] ' + lmode + ' before ' + stat());
           for (var li = 0; li < 30; li++) {
             setF('x', 'Z', 1);
