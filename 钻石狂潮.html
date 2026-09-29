@@ -4496,7 +4496,51 @@ var VM = (function () {
     }, 300);
   }
 
+  function clearSavedGame() {
+    try {
+      var keys = [];
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k && k.indexOf('dr_rms_') === 0) keys.push(k);
+      }
+      for (var j = 0; j < keys.length; j++) localStorage.removeItem(keys[j]);
+    } catch (e) { }
+  }
+
+  function showBootHelp(loading, msg) {
+    if (!loading || loading.$helped) return;
+    loading.$helped = true;
+    loading.innerHTML = '';
+    var box = document.createElement('div');
+    box.style.cssText = 'text-align:center;max-width:280px;color:#ddd;font-size:14px;line-height:1.6';
+    var p1 = document.createElement('div');
+    p1.textContent = msg || '启动较慢或被存档卡住？';
+    var btn = document.createElement('button');
+    btn.textContent = '清空存档并重新加载';
+    btn.style.cssText = 'margin-top:14px;padding:10px 16px;font-size:15px;border-radius:8px;border:1px solid #666;background:#2c2d35;color:#eee';
+    btn.addEventListener('click', function () { clearSavedGame(); location.reload(); });
+    box.appendChild(p1);
+    box.appendChild(btn);
+    loading.appendChild(box);
+  }
+
   function boot() {
+    try { if (typeof location !== 'undefined' && /[#&]clearsave/.test(location.hash)) clearSavedGame(); } catch (e) { }
+    var loadingEl = document.getElementById('loading');
+    if (loadingEl) {
+      setTimeout(function () {
+        if (loadingEl.style.display !== 'none') {
+          showBootHelp(loadingEl, '还在初始化…如果一直卡住，可能是旧存档不兼容，可清空存档重来。');
+        }
+      }, 8000);
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('error', function (ev) {
+        if (loadingEl && loadingEl.style.display !== 'none') {
+          showBootHelp(loadingEl, '启动出错：' + (ev && ev.message ? ev.message : '未知错误'));
+        }
+      });
+    }
     activeOrient = currentOrient();
     applyVariant(activeOrient);
     initScreen();
