@@ -313,6 +313,27 @@
         aengine.stop(aply);
         print('[audiotest] stop  ' + JSON.stringify(aengine.stats()) + ' start=' + astarts + ' stop=' + astops + ' stopDeltaOnEnd=' + stopsAfterEnd);
       }
+      else if (cmd === 'jtest11') {
+        var icj = VM.getClass('i');
+        var cvj = VM.instances.canvas;
+        function fkj(name, desc) { for (var fi = 0; fi < icj.fields.length; fi++) { var fd = icj.fields[fi]; if (!fd.static && fd.name === name && fd.desc === desc) return fd.key; } return null; }
+        function setj(name, desc, v) { cvj.$f[fkj(name, desc)] = v; }
+        function getj(name, desc) { return cvj.$f[fkj(name, desc)] | 0; }
+        var tj = VM.instances.uiThread || VM.instances.mainThread;
+        var mj = VM.resolveMethod(icj, 'j', '(I)V');
+        var mb = VM.resolveMethod(icj, 'b', '(II)I');
+        function stageOf(st) { try { return VM.call(tj, mb, cvj, [0, st]); } catch (e) { return 'ERR'; } }
+        setj('aA', 'I', 0); setj('aB', 'I', 6); setj('bb', 'I', 5);
+        var svj = icj.staticFields['i:[B'];
+        var bankBefore = svj ? (svj[6] & 0xff) | ((svj[7] & 0xff) << 8) : -1;
+        print('[j11] before s6=' + stageOf(6) + ' s7=' + stageOf(7) + ' bb=' + getj('bb', 'I') + ' bank=' + bankBefore);
+        for (var k = 0; k < 12; k++) {
+          try { VM.call(tj, mj, cvj, [k]); }
+          catch (e) { print('[j11] j(' + k + ') EXC ' + (e && e.obj ? (e.obj.$cls ? e.obj.$cls.name : '?') + ':' + e.obj.$msg : e)); }
+        }
+        var bankAfter = svj ? (svj[6] & 0xff) | ((svj[7] & 0xff) << 8) : -1;
+        print('[j11] after s6=' + stageOf(6) + ' s7=' + stageOf(7) + ' aB=' + getj('aB', 'I') + ' bb=' + getj('bb', 'I') + ' bank=' + bankAfter);
+      }
       else if (cmd === 'jtest') {
         var canvas = VM.instances.canvas;
         var jo = null;

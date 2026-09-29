@@ -177,6 +177,7 @@
   var perfEnabled = false;
   try { perfEnabled = typeof location !== 'undefined' && /[?&#]perf=1(&|$)/.test(location.search + '&' + location.hash); } catch (e) { }
   var perfEl = null, perfFrames = 0, perfRenderMs = 0, perfLast = 0;
+  var settleLogText = '';
   var fitPref = null;
   try { fitPref = (typeof localStorage !== 'undefined') ? localStorage.getItem('dr_fit') : null; } catch (e) { }
   var fitMode = (fitPref === null) ? detectTouch() : (fitPref === '1');
@@ -236,7 +237,12 @@
           var rp = (ptr + 1 < sv.length) ? u16(ptr) : 0;
           var got = (rp + 1 < sv.length) ? (sv[rp] & 0xff) : -1;
           var tot = (rp + 1 < sv.length) ? (sv[rp + 1] & 0xff) : -1;
-          mapInfo = '\nmap w' + wa + 's' + ws + ' ' + got + '/' + tot + ' bank=' + u16(6);
+          var bbKey2 = hf('bb', 'I'), azKey2 = hf('az', 'I');
+          mapInfo = '\nmap w' + wa + 's' + ws + ' ' + got + '/' + tot + ' bank=' + u16(6) +
+            ' bb=' + (bbKey2 ? (cv.$f[bbKey2] | 0) : '?') +
+            ' az=' + (azKey2 ? (cv.$f[azKey2] | 0) : '?') +
+            ' st=' + (ic.staticFields['b:B'] | 0) +
+            (settleLogText ? '\n' + settleLogText : '');
         }
       } catch (err) { }
       perfEl.textContent = 'fps ' + fps.toFixed(0) +
@@ -246,6 +252,46 @@
       perfRenderMs = 0;
       perfLast = now;
     }, 1000);
+  }
+
+  // Diagnostic (only with #perf=1): wrap i.c(Z)V so every settlement shows the
+  // stage index, live red-gem counter and the stored record value.
+  function installPerfHooks() {
+    try {
+      var ic = VM.getClass('i');
+      var orig = ic.methods['c:(Z)V'];
+      if (!orig || orig.native) return;
+      var bbKey = null, aBKey = null;
+      for (var fi = 0; fi < ic.fields.length; fi++) {
+        var fd = ic.fields[fi];
+        if (fd.static) continue;
+        if (fd.name === 'bb' && fd.desc === 'I') bbKey = fd.key;
+        if (fd.name === 'aB' && fd.desc === 'I') aBKey = fd.key;
+      }
+      function recText(stage) {
+        try {
+          var sv = ic.staticFields['i:[B'];
+          var hf = function (name, desc) { for (var i = 0; i < ic.fields.length; i++) { var f2 = ic.fields[i]; if (!f2.static && f2.name === name && f2.desc === desc) return f2.key; } return null; };
+          var cv = VM.instances.canvas;
+          var wa = cv ? (cv.$f[hf('aA', 'I')] | 0) : 0;
+          var u16 = function (o) { return (sv[o] & 0xff) | ((sv[o + 1] & 0xff) << 8); };
+          var base = u16(14 + wa * 2);
+          var ptr = u16(base + 3 + stage * 2);
+          return (sv[ptr] & 0xff) + '/' + (sv[ptr + 1] & 0xff);
+        } catch (e) { return '?'; }
+      }
+      ic.methods['c:(Z)V'] = {
+        name: 'c', desc: '(Z)V', cls: ic, static: false, native: true, key: 'c:(Z)V',
+        fn: function (VMapi, self, args) {
+          var bb = bbKey ? (self.$f[bbKey] | 0) : -1;
+          var st = aBKey ? (self.$f[aBKey] | 0) : -1;
+          var before = recText(st);
+          var r = VMapi.call(VMapi.current(), orig, self, args);
+          settleLogText = 'settle c(' + args[0] + ') s' + st + ' bb=' + bb + ' rec ' + before + '->' + recText(st);
+          return r;
+        }
+      };
+    } catch (e) { }
   }
 
   function render() {
@@ -580,6 +626,7 @@
     VM.instances.onDestroyed = onDestroyed;
 
     var loading = document.getElementById('loading');
+    if (perfEnabled) installPerfHooks();
     try {
       VM.instances.audio = deferredAudio;
       VM.runMain('GloftDIRU', parseManifest());
