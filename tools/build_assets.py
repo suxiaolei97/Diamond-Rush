@@ -21,12 +21,41 @@ import argparse
 import base64
 import json
 import os
+import struct
 import zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def read_jar(path):
+def patch_exit_settlement(data):
+    """Diamond_CP v1.1.8 (landscape) fails to write the per-stage red-gem
+    record when a level is finished by leaving the map: the shared completion
+    calls c(false) for both the normal and the secret branch, while portrait
+    calls c(true) on the normal branch.  Length-preserving fix:
+      - the shared call becomes c(true) (iconst_0 -> iconst_1)
+      - the secret branch's goto skips it (state 35 settles and writes the
+        record via s() a few frames later).
+    Pattern: bipush 35; putstatic i.b:B; goto T; at T: aload_0; iconst_0;
+    invokespecial i.c(Z)V.  Matches only the landscape build.
+    Returns (patched_bytes, (old_goto_rel, new_goto_rel)) or (data, None)."""
+    pat = bytes([0x10, 0x23, 0xb3, 0x01, 0xdd, 0xa7])   # bipush 35; putstatic b;B; goto
+    idx = data.find(pat)
+    if idx < 0 or data.find(pat, idx + 1) >= 0:
+        return data, None
+    goto_pos = idx + 5
+    old_op = struct.unpack('>h', data[goto_pos + 1:goto_pos + 3])[0]
+    call_at = goto_pos + old_op
+    if call_at < 0 or call_at + 3 > len(data):
+        return data, None
+    if data[call_at:call_at + 3] != bytes([0x2a, 0x03, 0xb7]):
+        return data, None
+    data = bytearray(data)
+    data[call_at + 1] = 0x04                        # iconst_0 -> iconst_1 (c(true))
+    struct.pack_into('>h', data, goto_pos + 1, old_op + 5)   # skip that call
+    return bytes(data), (old_op, old_op + 5)
+
+
+def read_jar(path, exit_fix=True):
     z = zipfile.ZipFile(path)
     classes = {}
     resources = {}
@@ -35,6 +64,10 @@ def read_jar(path):
             continue
         data = z.read(n)
         if n.endswith('.class'):
+            if exit_fix and n == 'i.class':
+                data, hit = patch_exit_settlement(data)
+                if hit:
+                    print('  %s: fixed map-exit gem settlement (goto %d -> %d)' % (os.path.basename(path), hit[0], hit[1]))
             classes[n[:-6]] = base64.b64encode(data).decode('ascii')
         else:
             if n.startswith('META-INF') and not n.endswith('MANIFEST.MF'):
@@ -59,6 +92,8 @@ def main():
     ap.add_argument('--landscape', default=None,
                     help='landscape JAR (default: diamond_CP.jar if present)')
     ap.add_argument('--out', default=os.path.join(ROOT, 'src', 'assets'))
+    ap.add_argument('--no-exit-fix', action='store_true',
+                    help='do not patch the landscape map-exit gem settlement')
     args = ap.parse_args()
 
     p_jar = args.portrait2 or args.portrait or os.environ.get('DR_JAR') or os.path.join(ROOT, '钻石狂潮.jar')
@@ -73,8 +108,8 @@ def main():
         raise SystemExit('landscape JAR not found: %s' % l_jar)
 
     os.makedirs(args.out, exist_ok=True)
-    p_classes, p_res = read_jar(p_jar)
-    l_classes, l_res = read_jar(l_jar) if l_jar else ({}, {})
+    p_classes, p_res = read_jar(p_jar, not args.no_exit_fix)
+    l_classes, l_res = read_jar(l_jar, not args.no_exit_fix) if l_jar else ({}, {})
 
     shared = {k: v for k, v in p_res.items() if k in l_res and l_res[k] == v}
     p_only = {k: v for k, v in p_res.items() if k not in shared}
