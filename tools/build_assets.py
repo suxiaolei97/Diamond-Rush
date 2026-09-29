@@ -55,7 +55,35 @@ def patch_exit_settlement(data):
     return bytes(data), (old_op, old_op + 5)
 
 
-def read_jar(path, exit_fix=True):
+def patch_ending_layout(data):
+    """Diamond_CP v1.1.8 (landscape) draws the ending medals 20..40 px too
+    low while the diamond rain plays: the map-completion animation (B) seats
+    the three world diamonds and the small stamp on the medallion center
+    (160,76), but the ending scene A() still uses the old base 96 (the
+    portrait layout); the CP build moved the medallion up by 20 and only
+    compensated B.  Length-preserving fix in A() only:
+      - the stamp anchor 96 -> 76   (bipush 96 -> bipush 76)
+      - both diamond loops 96 -> 56 (bipush 96 -> bipush 56)
+    Patterns are anchored on the A() draw sequences (B() has a trailing
+    "bipush 20; isub" instead).  Returns (patched_bytes, hits) or (data, []).
+    """
+    stamp = bytes.fromhex('1060b2011d10072e602ab4017460')
+    diam_main = bytes.fromhex('1060602ab40150642ab4017460030303b6')
+    diam_fade = bytes.fromhex('1060602ab4015064030303b6')
+    hits = []
+    out = bytearray(data)
+    for pat, new, label in ((stamp, 76, 'stamp'), (diam_main, 56, 'diamonds'), (diam_fade, 56, 'fade diamonds')):
+        idx = data.find(pat)
+        if idx < 0 or data.find(pat, idx + 1) >= 0:
+            return data, []
+        if data[idx] != 0x10 or data[idx + 1] != 0x60:
+            return data, []
+        out[idx + 1] = new
+        hits.append(label)
+    return bytes(out), hits
+
+
+def read_jar(path, exit_fix=True, ending_fix=False):
     z = zipfile.ZipFile(path)
     classes = {}
     resources = {}
@@ -68,6 +96,10 @@ def read_jar(path, exit_fix=True):
                 data, hit = patch_exit_settlement(data)
                 if hit:
                     print('  %s: fixed map-exit gem settlement (goto %d -> %d)' % (os.path.basename(path), hit[0], hit[1]))
+            if ending_fix and n == 'i.class':
+                data, hits = patch_ending_layout(data)
+                if hits:
+                    print('  %s: fixed ending layout (%s)' % (os.path.basename(path), ', '.join(hits)))
             classes[n[:-6]] = base64.b64encode(data).decode('ascii')
         else:
             if n.startswith('META-INF') and not n.endswith('MANIFEST.MF'):
@@ -94,6 +126,8 @@ def main():
     ap.add_argument('--out', default=os.path.join(ROOT, 'src', 'assets'))
     ap.add_argument('--no-exit-fix', action='store_true',
                     help='do not patch the landscape map-exit gem settlement')
+    ap.add_argument('--no-ending-fix', action='store_true',
+                    help='do not patch the landscape ending medal layout')
     args = ap.parse_args()
 
     p_jar = args.portrait2 or args.portrait or os.environ.get('DR_JAR') or os.path.join(ROOT, '钻石狂潮.jar')
@@ -109,7 +143,7 @@ def main():
 
     os.makedirs(args.out, exist_ok=True)
     p_classes, p_res = read_jar(p_jar, not args.no_exit_fix)
-    l_classes, l_res = read_jar(l_jar, not args.no_exit_fix) if l_jar else ({}, {})
+    l_classes, l_res = read_jar(l_jar, not args.no_exit_fix, not args.no_ending_fix) if l_jar else ({}, {})
 
     shared = {k: v for k, v in p_res.items() if k in l_res and l_res[k] == v}
     p_only = {k: v for k, v in p_res.items() if k not in shared}

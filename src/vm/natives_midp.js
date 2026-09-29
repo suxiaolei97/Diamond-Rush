@@ -50,6 +50,11 @@
       o.$cjk = {};
       o.$widths = {};
       o.$data = fontBytes();
+      // Nudge the bitmap glyphs down so they sit centred inside the game's
+      // menu rows (the layout assumes a taller device font); small font keeps
+      // its tighter HUD placement.
+      o.$vShift = small ? 0 : 3;
+      o.$shadow = true;
       return o;
     }
     function charW(font, code) {
@@ -87,7 +92,7 @@
       var pts = [];
       for (var y = 0; y < h; y++) {
         for (var x = 0; x < w; x++) {
-          if (d[(y * w + x) * 4 + 3] > 90) pts.push(x, y);
+          if (d[(y * w + x) * 4 + 3] > 64) pts.push(x, y);
         }
       }
       var res = { w: w, pts: pts };
@@ -112,7 +117,7 @@
     function drawGlyphs(g, font, s, x, baseline, color) {
       var data = font.$data;
       var pen = x;
-      var asciiTop = baseline - font.$glyphH;
+      var asciiTop = baseline - font.$glyphH + (font.$vShift || 0);
       for (var i = 0; i < s.length; i++) {
         var code = s.charCodeAt(i);
         if (code === 10 || code === 13) continue;
@@ -131,7 +136,7 @@
         } else {
           var bmp = cjkBitmap(font, code);
           if (bmp) {
-            var top = baseline - (font.$ascent - 1);
+            var top = baseline - (font.$ascent - 1) + (font.$vShift || 0);
             for (var k = 0; k < bmp.pts.length; k += 2) {
               gPlot(g, pen + bmp.pts[k], top + bmp.pts[k + 1], color);
             }
@@ -273,6 +278,9 @@
       else if ((anchor & 2) !== 0) baseline = baseline - ((font.$height / 2) | 0) + font.$ascent;
       else if ((anchor & 64) !== 0) baseline = baseline;
       else baseline = baseline + font.$ascent;
+      if (font.$shadow !== false && (color & 0xFFFFFF) !== 0) {
+        drawGlyphs(g, font, s, bx + 1, baseline + 1, 0xB0000000 | ((color >>> 1) & 0x7F7F7F));
+      }
       drawGlyphs(g, font, s, bx, baseline, color);
     }
 
